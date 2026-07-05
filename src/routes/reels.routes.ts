@@ -10,10 +10,8 @@ reelsRouter.use(requireApiKey);
 const upsertSchema = z.object({
   reelId: z.string().min(1),
   enabled: z.boolean().optional(),
-  confirmationKeyword: z.string().min(1).nullable().optional(),
-  step1Template: z.string().min(1).nullable().optional(),
-  step2Template: z.string().min(1).nullable().optional(),
-  nudgeTemplate: z.string().min(1).nullable().optional(),
+  dmTemplate: z.string().min(1).nullable().optional(),
+  commentReplyTemplate: z.string().min(1).nullable().optional(),
   blocklistKeywords: z.array(z.string()).nullable().optional(),
   detailedMessageContent: z.string().nullable().optional(),
 });

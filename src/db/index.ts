@@ -88,19 +88,26 @@ async function ensureIndexes(database: Db): Promise<void> {
 
 /**
  * Seed the default global templates only if missing (never clobber edits made
- * via PUT /templates). Uses _id = template key.
+ * via PUT /templates). Uses _id = template key. Also removes obsolete keys from
+ * the previous two-step follow-gate design.
  */
 async function seedDefaultTemplates(database: Db): Promise<void> {
   const defaults: Record<string, string> = {
-    STEP_1_TEMPLATE:
-      "Thanks for the comment! 🙌 Follow @{{pageHandle}} and reply '{{confirmationKeyword}}' here and I'll send you the details!",
-    STEP_2_TEMPLATE:
-      "Awesome, thanks for following! 🎉 Here's what you're looking for: {{detailedMessageContent}}",
-    NUDGE_TEMPLATE:
-      "Almost there! Just reply '{{confirmationKeyword}}' once you've followed 🙂",
+    DM_TEMPLATE:
+      `Hi! 👋
+
+Thanks for your interest in our WhatsApp AI Agent.
+
+You can book a free demo here:
+[Your Demo Booking Link]
+
+In the demo, I'll show you how the agent can automate content creation, approvals, and social media posting for your business.
+
+Looking forward to speaking with you`,
+    COMMENT_REPLY_TEMPLATE:
+      "I've sent you the details in your DM 📩 Check your inbox!",
     DETAILED_MESSAGE_CONTENT:
-      'https://example.com/your-offer — check your DMs for more!',
-    DEFAULT_CONFIRMATION_KEYWORD: config.DEFAULT_CONFIRMATION_KEYWORD,
+      'https://example.com/your-offer — enjoy!',
   };
 
   const coll = database.collection<TemplateDoc>(COLLECTIONS.templates);
@@ -114,4 +121,16 @@ async function seedDefaultTemplates(database: Db): Promise<void> {
       ),
     ),
   );
+
+  // Clean up template keys from the retired follow-gate flow.
+  await coll.deleteMany({
+    _id: {
+      $in: [
+        'STEP_1_TEMPLATE',
+        'STEP_2_TEMPLATE',
+        'NUDGE_TEMPLATE',
+        'DEFAULT_CONFIRMATION_KEYWORD',
+      ],
+    },
+  });
 }

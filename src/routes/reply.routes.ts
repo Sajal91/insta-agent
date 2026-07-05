@@ -15,32 +15,23 @@ replyRouter.use(requireApiKey);
 
 const manualSchema = z.object({
   commentId: z.string().min(1),
-  step: z.union([z.literal(1), z.literal(2)]),
   // Optional context; if omitted we try to fetch it from the Graph API.
   reelId: z.string().min(1).optional(),
   igUserId: z.string().min(1).optional(),
   dryRun: z.boolean().optional().default(false),
 });
 
-async function resolveKeyword(reelId: string | undefined): Promise<string> {
-  const reel = reelId ? await reelsRepo.get(reelId) : null;
-  if (reel?.confirmationKeyword?.trim()) return reel.confirmationKeyword.trim();
-  return (
-    (await templatesRepo.get('DEFAULT_CONFIRMATION_KEYWORD'))?.trim() ||
-    config.DEFAULT_CONFIRMATION_KEYWORD
-  );
-}
-
 async function resolveTemplate(
   reelId: string | undefined,
-  step: 1 | 2,
+  which: 'dm' | 'commentReply',
 ): Promise<string> {
   const reel = reelId ? await reelsRepo.get(reelId) : null;
-  const override = step === 1 ? reel?.step1Template : reel?.step2Template;
+  const override = which === 'dm' ? reel?.dmTemplate : reel?.commentReplyTemplate;
   if (override?.trim()) return override;
   return (
-    (await templatesRepo.get(step === 1 ? 'STEP_1_TEMPLATE' : 'STEP_2_TEMPLATE')) ??
-    ''
+    (await templatesRepo.get(
+      which === 'dm' ? 'DM_TEMPLATE' : 'COMMENT_REPLY_TEMPLATE',
+    )) ?? ''
   );
 }
 
@@ -51,8 +42,9 @@ async function resolveDetailed(reelId: string | undefined): Promise<string> {
 }
 
 /**
- * Manually fire a Step 1 or Step 2 reply to a specific comment. Intended for
- * testing/support. `dryRun: true` renders the message without posting.
+ * Manually trigger the "send details" flow for a specific comment: DM the
+ * details to the commenter + post the public "sent to your DM" reply. Intended
+ * for testing/support. `dryRun: true` renders both messages without posting.
  */
 replyRouter.post(
   '/manual',
@@ -62,7 +54,7 @@ replyRouter.post(
       res.status(400).json(formatZodError(parsed.error));
       return;
     }
-    const { commentId, step, dryRun } = parsed.data;
+    const { commentId, dryRun } = parsed.data;
     let { reelId, igUserId } = parsed.data;
 
     // Fill missing context from the Graph API (best-effort).
@@ -76,45 +68,40 @@ replyRouter.post(
       }
     }
 
-    const keyword = await resolveKeyword(reelId);
-    const template = await resolveTemplate(reelId, step);
-    const message = render(template, {
+    const dmMessage = render(await resolveTemplate(reelId, 'dm'), {
       pageHandle: config.IG_PAGE_HANDLE,
-      confirmationKeyword: keyword,
-      detailedMessageContent:
-        step === 2 ? await resolveDetailed(reelId) : undefined,
+      detailedMessageContent: await resolveDetailed(reelId),
+    });
+    const replyMessage = render(await resolveTemplate(reelId, 'commentReply'), {
+      pageHandle: config.IG_PAGE_HANDLE,
     });
 
     if (dryRun) {
-      res.json({ dryRun: true, commentId, step, message });
+      res.json({ dryRun: true, commentId, dmMessage, replyMessage });
       return;
     }
 
-    const replyId = await instagramService.replyToComment(commentId, message);
+    const messageId = await instagramService.sendPrivateReply(commentId, dmMessage);
+    const replyId = await instagramService.replyToComment(commentId, replyMessage);
 
-    // Keep flow state consistent with the manual action when we know the user/reel.
     if (igUserId && reelId) {
-      if (step === 1) {
-        await flowStateRepo.upsert({
-          igUserId,
-          commentId: replyId,
-          reelId,
-          stage: 'AWAITING_FOLLOW_CONFIRMATION',
-        });
-      } else {
-        await flowStateRepo.updateStage(igUserId, reelId, 'COMPLETED');
-      }
+      await flowStateRepo.upsert({
+        igUserId,
+        commentId,
+        reelId,
+        stage: 'COMPLETED',
+      });
     }
 
     await logsRepo.add({
       commentId,
       igUserId: igUserId ?? null,
       reelId: reelId ?? null,
-      action: step === 1 ? 'STEP_1_REPLIED' : 'STEP_2_REPLIED',
+      action: 'DETAILS_SENT',
       status: 'success',
-      message: `manual reply_id=${replyId}`,
+      message: `manual dm=${messageId} reply=${replyId}`,
     });
 
-    res.json({ commentId, step, replyId, message });
+    res.json({ commentId, messageId, replyId, dmMessage, replyMessage });
   }),
 );

@@ -9,11 +9,9 @@ templatesRouter.use(requireApiKey);
 
 const putSchema = z
   .object({
-    STEP_1_TEMPLATE: z.string().min(1).optional(),
-    STEP_2_TEMPLATE: z.string().min(1).optional(),
-    NUDGE_TEMPLATE: z.string().min(1).optional(),
+    DM_TEMPLATE: z.string().min(1).optional(),
+    COMMENT_REPLY_TEMPLATE: z.string().min(1).optional(),
     DETAILED_MESSAGE_CONTENT: z.string().min(1).optional(),
-    DEFAULT_CONFIRMATION_KEYWORD: z.string().min(1).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
     message: 'Provide at least one template key to update',

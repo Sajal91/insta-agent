@@ -5,10 +5,8 @@ function mapDoc(doc: ReelConfigDoc): ReelConfig {
   return {
     reelId: doc._id,
     enabled: doc.enabled,
-    confirmationKeyword: doc.confirmationKeyword,
-    step1Template: doc.step1Template,
-    step2Template: doc.step2Template,
-    nudgeTemplate: doc.nudgeTemplate,
+    dmTemplate: doc.dmTemplate,
+    commentReplyTemplate: doc.commentReplyTemplate,
     blocklistKeywords: doc.blocklistKeywords ?? [],
     detailedMessageContent: doc.detailedMessageContent,
     createdAt: doc.createdAt,
@@ -19,10 +17,8 @@ function mapDoc(doc: ReelConfigDoc): ReelConfig {
 export interface ReelConfigInput {
   reelId: string;
   enabled?: boolean;
-  confirmationKeyword?: string | null;
-  step1Template?: string | null;
-  step2Template?: string | null;
-  nudgeTemplate?: string | null;
+  dmTemplate?: string | null;
+  commentReplyTemplate?: string | null;
   blocklistKeywords?: string[] | null;
   detailedMessageContent?: string | null;
 }
@@ -56,11 +52,9 @@ export const reelsRepo = {
     const doc: ReelConfigDoc = {
       _id: input.reelId,
       enabled,
-      confirmationKeyword:
-        input.confirmationKeyword ?? existing?.confirmationKeyword ?? null,
-      step1Template: input.step1Template ?? existing?.step1Template ?? null,
-      step2Template: input.step2Template ?? existing?.step2Template ?? null,
-      nudgeTemplate: input.nudgeTemplate ?? existing?.nudgeTemplate ?? null,
+      dmTemplate: input.dmTemplate ?? existing?.dmTemplate ?? null,
+      commentReplyTemplate:
+        input.commentReplyTemplate ?? existing?.commentReplyTemplate ?? null,
       blocklistKeywords: blocklist,
       detailedMessageContent:
         input.detailedMessageContent ??

@@ -1,6 +1,5 @@
 import { config } from '../config/env';
 import { logger } from '../utils/logger';
-import { matchesConfirmation } from '../utils/keyword';
 import { render } from './template.service';
 import { commentsRepo } from '../db/repositories/comments.repo';
 import { flowStateRepo } from '../db/repositories/flow-state.repo';
@@ -35,17 +34,12 @@ export interface FlowResult {
  */
 export interface FlowDeps {
   reels: Pick<typeof reelsRepo, 'get'>;
-  flows: Pick<
-    typeof flowStateRepo,
-    'findOpenByUserAndReel' | 'upsert' | 'updateStage'
-  >;
+  flows: Pick<typeof flowStateRepo, 'upsert'>;
   comments: Pick<typeof commentsRepo, 'isProcessed' | 'markProcessed'>;
   templates: Pick<typeof templatesRepo, 'get'>;
   logs: Pick<typeof logsRepo, 'add'>;
-  ig: Pick<typeof instagramService, 'replyToComment'>;
+  ig: Pick<typeof instagramService, 'replyToComment' | 'sendPrivateReply'>;
   ownAccountId: string;
-  defaultKeyword: string;
-  sendNudgeOnMismatch: boolean;
 }
 
 function defaultDeps(): FlowDeps {
@@ -57,42 +51,20 @@ function defaultDeps(): FlowDeps {
     logs: logsRepo,
     ig: instagramService,
     ownAccountId: config.IG_BUSINESS_ACCOUNT_ID,
-    defaultKeyword: config.DEFAULT_CONFIRMATION_KEYWORD,
-    sendNudgeOnMismatch: config.SEND_NUDGE_ON_MISMATCH,
   };
-}
-
-/** Resolve the confirmation keyword for a reel (override -> global default). */
-async function resolveKeyword(deps: FlowDeps, reelId: string): Promise<string> {
-  const reel = await deps.reels.get(reelId);
-  if (reel?.confirmationKeyword && reel.confirmationKeyword.trim()) {
-    return reel.confirmationKeyword.trim();
-  }
-  const stored = await deps.templates.get('DEFAULT_CONFIRMATION_KEYWORD');
-  return (stored && stored.trim()) || deps.defaultKeyword;
 }
 
 /** Resolve a template value, preferring a per-reel override. */
 async function resolveTemplate(
   deps: FlowDeps,
   reelId: string,
-  which: 'step1' | 'step2' | 'nudge',
+  which: 'dm' | 'commentReply',
 ): Promise<string> {
   const reel = await deps.reels.get(reelId);
-  const override =
-    which === 'step1'
-      ? reel?.step1Template
-      : which === 'step2'
-        ? reel?.step2Template
-        : reel?.nudgeTemplate;
+  const override = which === 'dm' ? reel?.dmTemplate : reel?.commentReplyTemplate;
   if (override && override.trim()) return override;
 
-  const key =
-    which === 'step1'
-      ? 'STEP_1_TEMPLATE'
-      : which === 'step2'
-        ? 'STEP_2_TEMPLATE'
-        : 'NUDGE_TEMPLATE';
+  const key = which === 'dm' ? 'DM_TEMPLATE' : 'COMMENT_REPLY_TEMPLATE';
   return (await deps.templates.get(key)) ?? '';
 }
 
@@ -119,8 +91,13 @@ async function isBlocklisted(
 }
 
 /**
- * Process a single normalized comment event through the two-step follow-gate.
- * Never throws for "business" outcomes — a failed reply is caught, logged as
+ * Process a single normalized comment event.
+ *
+ * Flow (single step, no follow-gate):
+ *   fresh top-level comment  ->  DM the details to the commenter, then post a
+ *                                public "sent to your DM" comment reply.
+ *
+ * Never throws for "business" outcomes — a failed DM/reply is caught, logged as
  * ERRORED, and returned so the worker/process stays alive.
  */
 export async function processCommentEvent(
@@ -134,7 +111,7 @@ export async function processCommentEvent(
     reelId: event.mediaId,
   };
 
-  // 1. Skip the bot's own comments (prevents replying to ourselves).
+  // 1. Skip the bot's own comments (e.g. our own "sent to your DM" reply).
   if (event.fromId && event.fromId === deps.ownAccountId) {
     await deps.logs.add({
       ...baseLog,
@@ -154,11 +131,16 @@ export async function processCommentEvent(
     return { action: 'SKIPPED_ALREADY_PROCESSED' };
   }
 
-  try {
-    const result = event.parentId
-      ? await handleReply(deps, event, baseLog)
-      : await handleFreshComment(deps, event, baseLog);
+  // 3. Only act on fresh top-level comments. Replies (including replies to our
+  //    own comment) are ignored so we don't loop or double-send.
+  if (event.parentId) {
+    await deps.comments.markProcessed(event.commentId);
+    await deps.logs.add({ ...baseLog, action: 'SKIPPED_REPLY', status: 'skipped' });
+    return { action: 'SKIPPED_REPLY' };
+  }
 
+  try {
+    const result = await handleFreshComment(deps, event, baseLog);
     // Mark processed only after a definitive (non-errored) outcome so transient
     // failures can be retried on webhook re-delivery.
     await deps.comments.markProcessed(event.commentId);
@@ -201,96 +183,51 @@ async function handleFreshComment(
     return { action: 'SKIPPED_BLOCKLISTED' };
   }
 
-  const keyword = await resolveKeyword(deps, event.mediaId);
-  const template = await resolveTemplate(deps, event.mediaId, 'step1');
-  const message = render(template, {
+  // 1) DM the details to the commenter (private reply). If this fails (e.g.
+  //    missing permission / outside the 7-day window), we throw and the public
+  //    "sent to your DM" reply is NOT posted — avoids a misleading message.
+  const detailed = await resolveDetailedContent(deps, event.mediaId);
+  const dmTemplate = await resolveTemplate(deps, event.mediaId, 'dm');
+  const dmMessage = render(dmTemplate, {
     pageHandle: config.IG_PAGE_HANDLE,
-    confirmationKeyword: keyword,
-    username: event.fromUsername,
+    detailedMessageContent: detailed,
+    username: event.fromUsername ?? '',
+  });
+  const messageId = await deps.ig.sendPrivateReply(event.commentId, dmMessage);
+  await deps.logs.add({
+    ...baseLog,
+    action: 'DM_SENT',
+    status: 'success',
+    message: `message_id=${messageId}`,
   });
 
-  const replyId = await deps.ig.replyToComment(event.commentId, message);
+  // 2) Post the public comment reply pointing them to their DM.
+  const replyTemplate = await resolveTemplate(deps, event.mediaId, 'commentReply');
+  const replyMessage = render(replyTemplate, {
+    pageHandle: config.IG_PAGE_HANDLE,
+    username: event.fromUsername ?? '',
+  });
+  const replyId = await deps.ig.replyToComment(event.commentId, replyMessage);
+  await deps.logs.add({
+    ...baseLog,
+    action: 'COMMENT_REPLIED',
+    status: 'success',
+    message: `reply_id=${replyId}`,
+  });
 
-  // Store the flow state keyed by user+reel. commentId here is OUR reply id,
-  // which becomes the parent of the thread the user will confirm in.
+  // 3) Record that this user was served (for /flows debugging / history).
   await deps.flows.upsert({
     igUserId: event.fromId,
-    commentId: replyId,
+    commentId: event.commentId,
     reelId: event.mediaId,
-    stage: 'AWAITING_FOLLOW_CONFIRMATION',
+    stage: 'COMPLETED',
   });
 
   await deps.logs.add({
     ...baseLog,
-    action: 'STEP_1_REPLIED',
+    action: 'DETAILS_SENT',
     status: 'success',
-    message: `reply_id=${replyId}`,
+    message: `dm=${messageId} reply=${replyId}`,
   });
-  return { action: 'STEP_1_REPLIED', detail: replyId };
-}
-
-async function handleReply(
-  deps: FlowDeps,
-  event: CommentEvent,
-  baseLog: { commentId: string; igUserId: string; reelId: string },
-): Promise<FlowResult> {
-  const open = await deps.flows.findOpenByUserAndReel(event.fromId, event.mediaId);
-  if (!open) {
-    await deps.logs.add({
-      ...baseLog,
-      action: 'SKIPPED_NO_OPEN_STATE',
-      status: 'skipped',
-    });
-    return { action: 'SKIPPED_NO_OPEN_STATE' };
-  }
-
-  const keyword = await resolveKeyword(deps, event.mediaId);
-
-  if (matchesConfirmation(event.text, keyword)) {
-    const detailed = await resolveDetailedContent(deps, event.mediaId);
-    const template = await resolveTemplate(deps, event.mediaId, 'step2');
-    const message = render(template, {
-      pageHandle: config.IG_PAGE_HANDLE,
-      confirmationKeyword: keyword,
-      detailedMessageContent: detailed,
-      username: event.fromUsername,
-    });
-
-    const replyId = await deps.ig.replyToComment(event.commentId, message);
-    await deps.flows.updateStage(event.fromId, event.mediaId, 'COMPLETED');
-
-    await deps.logs.add({
-      ...baseLog,
-      action: 'STEP_2_REPLIED',
-      status: 'success',
-      message: `reply_id=${replyId}`,
-    });
-    return { action: 'STEP_2_REPLIED', detail: replyId };
-  }
-
-  // Not a valid confirmation.
-  if (!deps.sendNudgeOnMismatch) {
-    await deps.logs.add({
-      ...baseLog,
-      action: 'IGNORED_MISMATCH',
-      status: 'skipped',
-    });
-    return { action: 'IGNORED_MISMATCH' };
-  }
-
-  const template = await resolveTemplate(deps, event.mediaId, 'nudge');
-  const message = render(template, {
-    pageHandle: config.IG_PAGE_HANDLE,
-    confirmationKeyword: keyword,
-    username: event.fromUsername,
-  });
-  const replyId = await deps.ig.replyToComment(event.commentId, message);
-
-  await deps.logs.add({
-    ...baseLog,
-    action: 'NUDGE_SENT',
-    status: 'success',
-    message: `reply_id=${replyId}`,
-  });
-  return { action: 'NUDGE_SENT', detail: replyId };
+  return { action: 'DETAILS_SENT', detail: `dm=${messageId} reply=${replyId}` };
 }

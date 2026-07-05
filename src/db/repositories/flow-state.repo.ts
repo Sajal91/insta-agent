@@ -13,23 +13,10 @@ function mapDoc(doc: FlowStateDoc): FlowState {
 }
 
 /**
- * Per-user flow state. Keyed by (igUserId, reelId): a user can be mid-flow on
- * multiple different Reels at once, but only one open state per Reel (enforced
- * by a unique index).
+ * Per-user delivery record. Keyed by (igUserId, reelId) with a unique index, so
+ * we keep one row per user+reel recording that details were delivered.
  */
 export const flowStateRepo = {
-  async findOpenByUserAndReel(
-    igUserId: string,
-    reelId: string,
-  ): Promise<FlowState | null> {
-    const doc = await collections.flowStates().findOne({
-      igUserId,
-      reelId,
-      stage: 'AWAITING_FOLLOW_CONFIRMATION',
-    });
-    return doc ? mapDoc(doc) : null;
-  },
-
   async listByUser(igUserId: string): Promise<FlowState[]> {
     const docs = await collections
       .flowStates()
@@ -62,18 +49,5 @@ export const flowStateRepo = {
       },
       { upsert: true },
     );
-  },
-
-  async updateStage(
-    igUserId: string,
-    reelId: string,
-    stage: FlowStage,
-  ): Promise<void> {
-    await collections
-      .flowStates()
-      .updateOne(
-        { igUserId, reelId },
-        { $set: { stage, updatedAt: new Date().toISOString() } },
-      );
   },
 };

@@ -1,11 +1,9 @@
 import { collections } from '../index';
 
 export type TemplateKey =
-  | 'STEP_1_TEMPLATE'
-  | 'STEP_2_TEMPLATE'
-  | 'NUDGE_TEMPLATE'
-  | 'DETAILED_MESSAGE_CONTENT'
-  | 'DEFAULT_CONFIRMATION_KEYWORD';
+  | 'DM_TEMPLATE'
+  | 'COMMENT_REPLY_TEMPLATE'
+  | 'DETAILED_MESSAGE_CONTENT';
 
 /** Global (default) templates + a couple of global config values. */
 export const templatesRepo = {

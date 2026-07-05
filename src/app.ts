@@ -11,12 +11,15 @@ import { templatesRouter } from './routes/templates.routes';
 import { logsRouter } from './routes/logs.routes';
 import { flowsRouter } from './routes/flows.routes';
 import { replyRouter } from './routes/reply.routes';
+import cors from "cors"
 
 export function createApp(): express.Express {
   const app = express();
 
   app.disable('x-powered-by');
   app.use(pinoHttp({ logger }));
+
+  app.use(cors({ origin: "*" }))
 
   // Capture the raw body so the webhook signature middleware can HMAC the exact
   // bytes Meta signed. Applied globally; harmless for the JSON API routes.

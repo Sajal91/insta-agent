@@ -5,12 +5,6 @@ import { z } from 'zod';
  * Environment schema. Everything the app needs comes from env vars — no secrets
  * are ever hardcoded. Validation happens once at boot; a bad config fails fast.
  */
-const boolFromString = z
-  .string()
-  .transform((v) => v.trim().toLowerCase())
-  .pipe(z.enum(['true', 'false', '1', '0', 'yes', 'no']))
-  .transform((v) => v === 'true' || v === '1' || v === 'yes');
-
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -25,10 +19,15 @@ const envSchema = z.object({
   IG_PAGE_HANDLE: z.string().min(1, 'IG_PAGE_HANDLE is required'),
   IG_GRAPH_API_VERSION: z.string().default('v21.0'),
 
-  IG_VERIFY_TOKEN: z.string().min(1, 'IG_VERIFY_TOKEN is required'),
+  // API host. Use graph.instagram.com for "Instagram API with Instagram Login"
+  // (tokens that start with IGAA/IGQ), or graph.facebook.com for the Facebook
+  // Login path (Page tokens that start with EAA).
+  IG_GRAPH_BASE_URL: z
+    .string()
+    .url()
+    .default('https://graph.instagram.com'),
 
-  DEFAULT_CONFIRMATION_KEYWORD: z.string().min(1).default('DONE'),
-  SEND_NUDGE_ON_MISMATCH: boolFromString.default('true'),
+  IG_VERIFY_TOKEN: z.string().min(1, 'IG_VERIFY_TOKEN is required'),
 
   API_KEY: z.string().min(1, 'API_KEY is required'),
 

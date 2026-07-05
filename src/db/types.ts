@@ -1,17 +1,19 @@
-/** Flow stages for a commenter progressing through the two-step follow-gate. */
-export type FlowStage = 'AWAITING_FOLLOW_CONFIRMATION' | 'COMPLETED';
+/**
+ * We record a state row once details have been delivered to a commenter (useful
+ * for the /flows debugging endpoint and as a per-user history).
+ */
+export type FlowStage = 'COMPLETED';
 
 /** What the flow engine decided to do with a given comment event. */
 export type ActionType =
-  | 'STEP_1_REPLIED'
-  | 'STEP_2_REPLIED'
-  | 'NUDGE_SENT'
+  | 'DM_SENT'
+  | 'COMMENT_REPLIED'
+  | 'DETAILS_SENT'
   | 'SKIPPED_OWN_COMMENT'
   | 'SKIPPED_ALREADY_PROCESSED'
   | 'SKIPPED_REEL_DISABLED'
   | 'SKIPPED_BLOCKLISTED'
-  | 'SKIPPED_NO_OPEN_STATE'
-  | 'IGNORED_MISMATCH'
+  | 'SKIPPED_REPLY'
   | 'ERRORED';
 
 export type LogStatus = 'success' | 'skipped' | 'error';
@@ -28,10 +30,8 @@ export interface ProcessedCommentDoc {
 export interface ReelConfigDoc {
   _id: string;
   enabled: boolean;
-  confirmationKeyword: string | null;
-  step1Template: string | null;
-  step2Template: string | null;
-  nudgeTemplate: string | null;
+  dmTemplate: string | null;
+  commentReplyTemplate: string | null;
   blocklistKeywords: string[];
   detailedMessageContent: string | null;
   createdAt: string;
@@ -69,10 +69,8 @@ export interface LogDoc {
 export interface ReelConfig {
   reelId: string;
   enabled: boolean;
-  confirmationKeyword: string | null;
-  step1Template: string | null;
-  step2Template: string | null;
-  nudgeTemplate: string | null;
+  dmTemplate: string | null;
+  commentReplyTemplate: string | null;
   blocklistKeywords: string[];
   detailedMessageContent: string | null;
   createdAt: string;

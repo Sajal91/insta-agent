@@ -1,7 +1,7 @@
 import { config } from '../config/env';
 import { logger } from '../utils/logger';
 
-const BASE_URL = 'https://graph.facebook.com';
+const BASE_URL = config.IG_GRAPH_BASE_URL;
 
 export interface GraphCommentAuthor {
   id?: string;
@@ -45,21 +45,29 @@ interface RequestOptions {
   method: 'GET' | 'POST';
   path: string;
   query?: Record<string, string>;
+  /** Optional JSON body (sent with content-type: application/json). */
+  body?: unknown;
   maxRetries?: number;
 }
 
 async function graphRequest<T>(opts: RequestOptions): Promise<T> {
-  const { method, path, query = {}, maxRetries = 3 } = opts;
+  const { method, path, query = {}, body, maxRetries = 3 } = opts;
   const url = new URL(`${BASE_URL}/${config.IG_GRAPH_API_VERSION}/${path}`);
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
   url.searchParams.set('access_token', config.IG_ACCESS_TOKEN);
+
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { 'content-type': 'application/json' };
+    init.body = JSON.stringify(body);
+  }
 
   let attempt = 0;
   // Retry with exponential backoff on transient failures.
   while (true) {
     attempt += 1;
     try {
-      const res = await fetch(url, { method });
+      const res = await fetch(url, init);
       const rawText = await res.text();
       let parsed: unknown = null;
       try {
@@ -104,9 +112,9 @@ async function graphRequest<T>(opts: RequestOptions): Promise<T> {
 
 export const instagramService = {
   /**
-   * Post a reply to a specific comment.
+   * Post a PUBLIC reply to a specific comment.
    * POST /{ig-comment-id}/replies?message=...
-   * Returns the newly-created comment id (used as the "parent" of the Step 1 thread).
+   * Returns the newly-created comment id.
    */
   async replyToComment(commentId: string, message: string): Promise<string> {
     const result = await graphRequest<{ id: string }>({
@@ -116,6 +124,29 @@ export const instagramService = {
     });
     logger.info({ commentId, replyId: result.id }, 'Posted reply to comment');
     return result.id;
+  },
+
+  /**
+   * Send a PRIVATE reply (DM) to the author of a comment.
+   * POST /{ig-user-id}/messages  with { recipient: { comment_id }, message: { text } }
+   *
+   * Requires the `instagram_business_manage_messages` permission (Instagram Login)
+   * / `pages_messaging` (Facebook Login) plus Advanced Access. Meta rules: one
+   * private reply per comment, must be sent within 7 days of the comment.
+   * Returns the message id.
+   */
+  async sendPrivateReply(commentId: string, message: string): Promise<string> {
+    const result = await graphRequest<{ message_id?: string; recipient_id?: string }>({
+      method: 'POST',
+      path: `${config.IG_BUSINESS_ACCOUNT_ID}/messages`,
+      body: {
+        recipient: { comment_id: commentId },
+        message: { text: message },
+      },
+    });
+    const messageId = result.message_id ?? '';
+    logger.info({ commentId, messageId }, 'Sent private reply (DM) to commenter');
+    return messageId;
   },
 
   /**

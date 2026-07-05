@@ -1,20 +1,21 @@
 # insta-agent — Instagram Reels Comment Auto-Reply Agent
 
-A backend server that automatically replies to comments on your Instagram Reels
-using the **Instagram Graph API (Meta)**. Replies are **static/templated** (no
-LLM/AI) and follow a **trust-based two-step follow-gate**:
+A backend server that automatically responds to comments on your Instagram Reels
+using the **Instagram Graph API (Meta)**. Messages are **static/templated** (no
+LLM/AI). Single-step flow:
 
-1. **New comment** → the bot publicly replies with the **Step 1** template asking
-   the commenter to follow the page and reply with a confirmation keyword (e.g.
-   `DONE`).
-2. **Commenter replies with the keyword** → the bot replies with the **Step 2**
-   template (the detailed message: link, info, offer, etc.).
-3. Everything else is ignored (and logged).
+1. **New top-level comment** → the bot **sends the details as a private reply (DM)**
+   to the commenter, then **posts a public comment reply** saying the details have
+   been sent to their DM.
+2. Replies to comments (and the bot's own comments) are ignored — only fresh
+   top-level comments trigger the flow.
 
-> ⚠️ **Why "trust-based"?** The Instagram Graph API does **not** expose whether a
-> given commenter follows your account. The follow-gate is therefore an honor
-> system implemented as the two-step comment flow above. Keyword matching is
-> intentionally lenient.
+> ⚠️ **DM requires an extra permission.** The private reply (DM) uses Instagram's
+> private-reply endpoint (`POST /{ig-id}/messages` with `recipient.comment_id`),
+> which needs **`instagram_business_manage_messages`** (Instagram Login) /
+> **`pages_messaging`** (Facebook Login) plus Advanced Access. Meta also limits it
+> to **one private reply per comment, within 7 days** of the comment. If the DM
+> fails, the public "sent to your DM" reply is intentionally **not** posted.
 
 ---
 
@@ -40,11 +41,11 @@ src/
     reels.routes.ts             # per-reel config
     templates.routes.ts         # default template editing
     logs.routes.ts              # paginated action log
-    flows.routes.ts             # per-user flow state (debugging)
-    reply.routes.ts             # manual Step 1/Step 2 trigger
+    flows.routes.ts             # per-user delivery history (debugging)
+    reply.routes.ts             # manual "send details" trigger
   services/
-    instagram.service.ts        # Graph API calls (fetch comment, post reply) + retries
-    flow-engine.service.ts      # the two-step logic (fully unit-tested)
+    instagram.service.ts        # Graph API calls (DM, comment reply, fetch) + retries
+    flow-engine.service.ts      # the DM + comment-reply logic (fully unit-tested)
     template.service.ts         # placeholder substitution
     queue.service.ts            # in-memory async worker
   db/
@@ -54,10 +55,10 @@ src/
   middleware/
     verify-webhook-signature.ts # X-Hub-Signature-256 (HMAC-SHA256)
     auth.ts                     # x-api-key gate for internal routes
-  utils/                        # logger, keyword matcher, http helpers
+  utils/                        # logger, http helpers
   app.ts
   server.ts
-test/                           # vitest (flow-engine + keyword matcher)
+test/                           # vitest (flow-engine)
 ```
 
 ---
@@ -112,9 +113,8 @@ Copy `.env.example` → `.env` and fill in:
 | `IG_BUSINESS_ACCOUNT_ID` | Your IG Business account ID — used to skip the bot's own comments |
 | `IG_PAGE_HANDLE` | Your `@handle` (without the `@`); used in templates via `{{pageHandle}}` |
 | `IG_GRAPH_API_VERSION` | Graph API version, e.g. `v21.0` |
+| `IG_GRAPH_BASE_URL` | API host: `https://graph.instagram.com` (Instagram Login, token starts with `IGAA`/`IGQ`) or `https://graph.facebook.com` (Facebook Login, Page token starts with `EAA`) |
 | `IG_VERIFY_TOKEN` | Arbitrary string; must match the token you enter in Meta's webhook config |
-| `DEFAULT_CONFIRMATION_KEYWORD` | Default confirmation keyword (e.g. `DONE`) |
-| `SEND_NUDGE_ON_MISMATCH` | `true` → send a nudge on non-matching replies; `false` → ignore |
 | `API_KEY` | Protects internal routes; sent as the `x-api-key` header |
 | `MONGODB_URI` | MongoDB connection string (local `mongodb://127.0.0.1:27017` or Atlas `mongodb+srv://...`) |
 | `MONGODB_DB` | Database name (default `insta_agent`) |
@@ -135,26 +135,29 @@ Page**, and a **Meta App** (Business type).
 > [Comment Moderation](https://developers.facebook.com/docs/instagram-platform/comment-moderation)
 > and [IG Comment Replies](https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-comment/replies/).
 
-This project targets the **Instagram API with Facebook Login** path
-(`graph.facebook.com`). As of writing, replying to comments requires:
+Set `IG_GRAPH_BASE_URL` to match how you obtained your token:
+
+**Instagram API with Instagram Login** (`https://graph.instagram.com`, token starts with `IGAA`/`IGQ`):
+
+- `instagram_business_basic`
+- `instagram_business_manage_comments` — read comments + post public replies
+- `instagram_business_manage_messages` — **required for the DM (private reply)**
+
+**Instagram API with Facebook Login** (`https://graph.facebook.com`, Page token starts with `EAA`):
 
 - `instagram_basic`
-- `instagram_manage_comments` — required to read comments and post replies
-- `pages_read_engagement`
-- `pages_show_list`
+- `instagram_manage_comments` — read comments + post public replies
+- `pages_read_engagement`, `pages_show_list`
+- `pages_messaging` — **required for the DM (private reply)**
 - If the Page role was granted via Business Manager, also `ads_management` or `ads_read`
 
-> There is also a newer **Instagram API with Instagram Login** path
-> (`graph.instagram.com`) which uses `instagram_business_basic` +
-> `instagram_business_manage_comments`. If you use that path, change the base URL
-> in `src/services/instagram.service.ts` accordingly. The original prompt also
-> mentioned `pages_manage_engagement`; the current docs list
-> `instagram_manage_comments` (+ `pages_read_engagement`) as the relevant scopes
-> for public comment replies, so double-check what your app actually needs in the
-> App Dashboard.
+> Scope names change over time — **verify against the latest Meta docs**:
+> [Comment Moderation](https://developers.facebook.com/docs/instagram-platform/comment-moderation)
+> and [Private Replies](https://developers.facebook.com/docs/instagram-platform/private-replies/).
 
-You will need **Advanced Access** for the comment permissions to use the app in
-production (beyond your own dev/test users).
+You will need **Advanced Access** for the comment + messaging permissions to use
+the app in production (beyond your own dev/test users). Without the messaging
+permission the DM step will fail (and the public reply won't be posted).
 
 ### 2. Get a long-lived access token
 
@@ -197,21 +200,25 @@ Put that URL (with `/webhooks/instagram`) as the webhook Callback URL.
 
 For every incoming comment event (processed asynchronously off the request path):
 
-1. **Skip own comments** — if the author is `IG_BUSINESS_ACCOUNT_ID`.
+1. **Skip own comments** — if the author is `IG_BUSINESS_ACCOUNT_ID` (this is how
+   the bot avoids reacting to its own "sent to your DM" reply).
 2. **Idempotency** — skip if the comment ID was already processed (DB check), so
-   Meta's webhook retries never double-reply.
-3. **Fresh top-level comment** (no `parent_id`):
+   Meta's webhook retries never double-send.
+3. **Skip replies** — if `parent_id` is present (only fresh top-level comments
+   trigger the flow).
+4. **Fresh top-level comment** (no `parent_id`):
    - Skip if the reel is explicitly disabled, or the text hits a blocklist keyword.
-   - Post **Step 1** and store `{ igUserId, commentId, reelId, stage: AWAITING_FOLLOW_CONFIRMATION }`.
-4. **Reply** (`parent_id` present):
-   - Look up the user's open `AWAITING_FOLLOW_CONFIRMATION` state for that reel.
-   - **Match** the confirmation keyword (lenient: trim, lowercase, common variants,
-     ✅/👍 emoji) → post **Step 2**, set stage `COMPLETED`.
-   - **No match** → send a **nudge** (if `SEND_NUDGE_ON_MISMATCH=true`) or ignore.
-   - **No open state** → ignore.
+   - **Send the DM** (private reply) with the detailed content → log `DM_SENT`.
+   - **Post the public comment reply** ("sent to your DM") → log `COMMENT_REPLIED`.
+   - Record a delivery row `{ igUserId, commentId, reelId, stage: COMPLETED }` and
+     log `DETAILS_SENT`.
 
-A **failed reply is caught and logged as `ERRORED`** — it never crashes the
-process. Graph API calls use exponential backoff on `429`/`5xx`/network errors.
+The DM is sent **first**: if it fails (missing permission, outside the 7-day
+window, etc.), the whole event is caught and logged as `ERRORED` and the public
+"sent to your DM" reply is **not** posted (so we never claim to have DMed when we
+didn't). A failed action never crashes the process. Graph API calls use
+exponential backoff on `429`/`5xx`/network errors (auth errors like `190` fail
+fast — they aren't retryable).
 
 ### Async processing / queue
 
@@ -229,14 +236,13 @@ single worker so the webhook endpoint can ACK Meta with `200` immediately.
 Default templates are seeded into the DB on first boot and editable via the API.
 Placeholders use `{{key}}` and are filled by simple string replacement:
 
-- `STEP_1_TEMPLATE` — supports `{{pageHandle}}`, `{{confirmationKeyword}}`, `{{username}}`
-- `STEP_2_TEMPLATE` — supports `{{detailedMessageContent}}`, `{{pageHandle}}`, `{{confirmationKeyword}}`, `{{username}}`
-- `NUDGE_TEMPLATE` — supports `{{confirmationKeyword}}`, `{{pageHandle}}`, `{{username}}`
-- `DETAILED_MESSAGE_CONTENT` — the payload injected into Step 2
-- `DEFAULT_CONFIRMATION_KEYWORD`
+- `DM_TEMPLATE` — the private message (DM) body. Supports `{{detailedMessageContent}}`, `{{pageHandle}}`, `{{username}}`
+- `COMMENT_REPLY_TEMPLATE` — the public "sent to your DM" reply. Supports `{{pageHandle}}`, `{{username}}`
+- `DETAILED_MESSAGE_CONTENT` — the payload (link/info/offer) injected into the DM
 
-**Per-reel overrides** (different offers per reel) are set via the reels API and
-take precedence over the global defaults.
+**Per-reel overrides** (different offers per reel) are set via the reels API
+(`dmTemplate`, `commentReplyTemplate`, `detailedMessageContent`) and take
+precedence over the global defaults.
 
 ---
 
@@ -251,13 +257,13 @@ All routes below require the `x-api-key: <API_KEY>` header. (The webhook routes 
 # List all reel configs
 curl -H "x-api-key: $API_KEY" localhost:3000/reels
 
-# Enable/disable + override keyword/templates for a reel
+# Enable/disable + override DM/reply templates and offer content for a reel
 curl -X POST -H "x-api-key: $API_KEY" -H 'content-type: application/json' \
   -d '{
     "reelId": "17900000000000000",
     "enabled": true,
-    "confirmationKeyword": "FOLLOWED",
-    "step2Template": "Thanks! Grab it here: {{detailedMessageContent}}",
+    "dmTemplate": "Hey! Here is what you asked for: {{detailedMessageContent}}",
+    "commentReplyTemplate": "Just DMed you the details 📩",
     "detailedMessageContent": "https://example.com/special-offer",
     "blocklistKeywords": ["spam", "http"]
   }' \
@@ -274,7 +280,7 @@ curl -X DELETE -H "x-api-key: $API_KEY" localhost:3000/reels/17900000000000000
 curl -H "x-api-key: $API_KEY" localhost:3000/templates
 
 curl -X PUT -H "x-api-key: $API_KEY" -H 'content-type: application/json' \
-  -d '{ "STEP_1_TEMPLATE": "Thanks! Follow @{{pageHandle}} then reply {{confirmationKeyword}}" }' \
+  -d '{ "COMMENT_REPLY_TEMPLATE": "Check your DMs 📩 (from @{{pageHandle}})" }' \
   localhost:3000/templates
 ```
 
@@ -290,17 +296,17 @@ curl -H "x-api-key: $API_KEY" "localhost:3000/logs?limit=50&offset=0"
 curl -H "x-api-key: $API_KEY" localhost:3000/flows/<IG_USER_ID>
 ```
 
-### Manual reply (testing)
+### Manual "send details" (testing)
 
 ```bash
-# Dry run (renders message without posting)
+# Dry run — renders both the DM and the public reply WITHOUT posting
 curl -X POST -H "x-api-key: $API_KEY" -H 'content-type: application/json' \
-  -d '{ "commentId": "17900000000000000", "step": 1, "dryRun": true }' \
+  -d '{ "commentId": "17900000000000000", "dryRun": true }' \
   localhost:3000/reply/manual
 
-# Actually post Step 2 to a comment
+# Actually DM the details + post the public reply for a comment
 curl -X POST -H "x-api-key: $API_KEY" -H 'content-type: application/json' \
-  -d '{ "commentId": "17900000000000000", "step": 2 }' \
+  -d '{ "commentId": "17900000000000000" }' \
   localhost:3000/reply/manual
 ```
 
@@ -315,20 +321,17 @@ npm test
 The suite covers the flow-engine decisions with **injected fake dependencies** (no
 DB, no network):
 
-- fresh comment → Step 1 (and stores state)
-- valid confirmation → Step 2 (and completes)
-- lenient confirmation variants (`done`, `Done!`, `FOLLOWED ✅`, `✅`, `yep`, …)
-- invalid confirmation → nudge (or ignore when disabled)
-- no open state → ignore
+- fresh comment → DM the details + post public reply (and record delivery)
+- per-reel DM/detailed-content override is applied
+- DM failure → `ERRORED`, and the public reply is **not** posted
+- reply comment (`parent_id`) → ignored
 - own comment / already-processed / disabled reel / blocklist → skipped
-- Graph API failure → logged as `ERRORED`, never throws
 
 ---
 
 ## Out of scope (v1)
 
-- No LLM/AI replies — static templates only.
-- No real follow verification (not possible via Graph API) — intentionally trust-based.
+- No LLM/AI messages — static templates only.
 - No frontend/dashboard — API + logs endpoint only.
 - No multi-account support — single IG Business account.
 - No image/media comment handling — text comments only.

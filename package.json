@@ -24,6 +24,8 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@types/cors": "^2.8.19",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "mongodb": "^7.4.0",
