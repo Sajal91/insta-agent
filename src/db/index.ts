@@ -108,6 +108,9 @@ Looking forward to speaking with you`,
       "I've sent you the details in your DM 📩 Check your inbox!",
     DETAILED_MESSAGE_CONTENT:
       'https://example.com/your-offer — enjoy!',
+    // Global fallback trigger keywords (comma-separated). Empty = no gate; the
+    // bot then DMs every commenter unless a per-post keyword list is set.
+    DEFAULT_TRIGGER_KEYWORDS: '',
   };
 
   const coll = database.collection<TemplateDoc>(COLLECTIONS.templates);

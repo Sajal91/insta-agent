@@ -13,6 +13,9 @@ export type ActionType =
   | 'SKIPPED_ALREADY_PROCESSED'
   | 'SKIPPED_REEL_DISABLED'
   | 'SKIPPED_BLOCKLISTED'
+  | 'SKIPPED_NO_KEYWORD'
+  | 'SKIPPED_NO_CONFIG'
+  | 'SKIPPED_NOT_ENABLED'
   | 'SKIPPED_REPLY'
   | 'ERRORED';
 
@@ -30,6 +33,11 @@ export interface ProcessedCommentDoc {
 export interface ReelConfigDoc {
   _id: string;
   enabled: boolean;
+  /**
+   * Comments must contain one of these (case-insensitive) to trigger the DM.
+   * Empty array = no keyword gate (reply to every comment).
+   */
+  triggerKeywords: string[];
   dmTemplate: string | null;
   commentReplyTemplate: string | null;
   blocklistKeywords: string[];
@@ -69,6 +77,7 @@ export interface LogDoc {
 export interface ReelConfig {
   reelId: string;
   enabled: boolean;
+  triggerKeywords: string[];
   dmTemplate: string | null;
   commentReplyTemplate: string | null;
   blocklistKeywords: string[];

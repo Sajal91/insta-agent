@@ -18,6 +18,28 @@ export interface GraphComment {
   media?: { id: string };
 }
 
+export interface GraphMedia {
+  id: string;
+  caption?: string;
+  media_type?: string; // IMAGE | VIDEO | CAROUSEL_ALBUM
+  media_product_type?: string; // FEED | REELS | STORY
+  media_url?: string;
+  thumbnail_url?: string;
+  permalink?: string;
+  timestamp?: string;
+  comments_count?: number;
+  like_count?: number;
+}
+
+export type PublishMediaType = 'IMAGE' | 'REELS';
+
+export interface PublishInput {
+  mediaType: PublishMediaType;
+  /** Publicly reachable URL (Meta fetches it). Image for IMAGE, video for REELS. */
+  mediaUrl: string;
+  caption?: string;
+}
+
 export class InstagramApiError extends Error {
   constructor(
     message: string,
@@ -161,5 +183,89 @@ export const instagramService = {
         fields: 'id,text,username,timestamp,from,parent_id,media',
       },
     });
+  },
+
+  /**
+   * List the connected account's media (posts + reels), newest first.
+   * GET /{ig-user-id}/media?fields=...
+   */
+  async listMedia(limit = 25): Promise<GraphMedia[]> {
+    const result = await graphRequest<{ data?: GraphMedia[] }>({
+      method: 'GET',
+      path: `${config.IG_BUSINESS_ACCOUNT_ID}/media`,
+      query: {
+        fields:
+          'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count',
+        limit: String(limit),
+      },
+    });
+    return result.data ?? [];
+  },
+
+  /**
+   * Publish a new post (IMAGE) or reel (REELS) from a public media URL.
+   *
+   * Two-step Content Publishing API:
+   *   1. Create a media container (POST /{ig-id}/media)
+   *   2. Publish it (POST /{ig-id}/media_publish?creation_id=...)
+   * For REELS the container must finish processing first, so we poll its status.
+   *
+   * Requires the `instagram_content_publish` / `instagram_business_content_publish`
+   * permission. The media URL must be publicly reachable (Meta fetches it).
+   * Returns the published media id.
+   */
+  async publishMedia(input: PublishInput): Promise<string> {
+    const containerQuery: Record<string, string> =
+      input.mediaType === 'REELS'
+        ? { media_type: 'REELS', video_url: input.mediaUrl }
+        : { image_url: input.mediaUrl };
+    if (input.caption) containerQuery.caption = input.caption;
+
+    const container = await graphRequest<{ id: string }>({
+      method: 'POST',
+      path: `${config.IG_BUSINESS_ACCOUNT_ID}/media`,
+      query: containerQuery,
+    });
+
+    // Reels need processing time before they can be published.
+    if (input.mediaType === 'REELS') {
+      await this.waitForContainerReady(container.id);
+    }
+
+    const published = await graphRequest<{ id: string }>({
+      method: 'POST',
+      path: `${config.IG_BUSINESS_ACCOUNT_ID}/media_publish`,
+      query: { creation_id: container.id },
+    });
+    logger.info({ mediaId: published.id }, 'Published media');
+    return published.id;
+  },
+
+  /** Poll a media container until it's FINISHED (or throw on ERROR/timeout). */
+  async waitForContainerReady(
+    containerId: string,
+    { attempts = 20, intervalMs = 3000 } = {},
+  ): Promise<void> {
+    for (let i = 0; i < attempts; i += 1) {
+      const status = await graphRequest<{ status_code?: string; status?: string }>({
+        method: 'GET',
+        path: containerId,
+        query: { fields: 'status_code,status' },
+      });
+      if (status.status_code === 'FINISHED') return;
+      if (status.status_code === 'ERROR') {
+        throw new InstagramApiError(
+          `Media container ${containerId} failed processing: ${status.status ?? 'ERROR'}`,
+          400,
+          status,
+        );
+      }
+      await sleep(intervalMs);
+    }
+    throw new InstagramApiError(
+      `Media container ${containerId} not ready after ${attempts} checks`,
+      408,
+      null,
+    );
   },
 };

@@ -3,7 +3,8 @@ import { collections } from '../index';
 export type TemplateKey =
   | 'DM_TEMPLATE'
   | 'COMMENT_REPLY_TEMPLATE'
-  | 'DETAILED_MESSAGE_CONTENT';
+  | 'DETAILED_MESSAGE_CONTENT'
+  | 'DEFAULT_TRIGGER_KEYWORDS';
 
 /** Global (default) templates + a couple of global config values. */
 export const templatesRepo = {

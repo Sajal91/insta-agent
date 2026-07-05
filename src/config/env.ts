@@ -31,6 +31,9 @@ const envSchema = z.object({
 
   API_KEY: z.string().min(1, 'API_KEY is required'),
 
+  // Allowed origin(s) for the admin panel (CORS). Comma-separated, or "*".
+  CORS_ORIGIN: z.string().default('*'),
+
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   MONGODB_DB: z.string().min(1).default('insta_agent'),
 });

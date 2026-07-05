@@ -1,5 +1,6 @@
 import { config } from '../config/env';
 import { logger } from '../utils/logger';
+import { containsAnyKeyword, parseKeywordList } from '../utils/keyword';
 import { render } from './template.service';
 import { commentsRepo } from '../db/repositories/comments.repo';
 import { flowStateRepo } from '../db/repositories/flow-state.repo';
@@ -91,6 +92,19 @@ async function isBlocklisted(
 }
 
 /**
+ * Accepted trigger keywords for a reel: the per-reel list if set, else the
+ * global DEFAULT_TRIGGER_KEYWORDS list. Empty result = no gate (accept all).
+ */
+async function resolveTriggerKeywords(
+  deps: FlowDeps,
+  reelId: string,
+): Promise<string[]> {
+  const reel = await deps.reels.get(reelId);
+  if (reel && reel.triggerKeywords.length > 0) return reel.triggerKeywords;
+  return parseKeywordList(await deps.templates.get('DEFAULT_TRIGGER_KEYWORDS'));
+}
+
+/**
  * Process a single normalized comment event.
  *
  * Flow (single step, no follow-gate):
@@ -165,6 +179,16 @@ async function handleFreshComment(
 ): Promise<FlowResult> {
   // Per-reel enable/disable. Unknown reels default to enabled (opt-out model).
   const reel = await deps.reels.get(event.mediaId);
+
+  if (!reel) {
+    await deps.logs.add({
+      ...baseLog,
+      action: 'SKIPPED_NO_CONFIG',
+      status: 'skipped',
+    });
+    return { action: 'SKIPPED_NO_CONFIG' };
+  }
+
   if (reel && !reel.enabled) {
     await deps.logs.add({
       ...baseLog,
@@ -181,6 +205,19 @@ async function handleFreshComment(
       status: 'skipped',
     });
     return { action: 'SKIPPED_BLOCKLISTED' };
+  }
+
+  // Keyword gate: if this post has accepted keywords, the comment must contain
+  // one of them (case-insensitive) — otherwise no DM is triggered.
+  const triggerKeywords = await resolveTriggerKeywords(deps, event.mediaId);
+  if (!containsAnyKeyword(event.text, triggerKeywords)) {
+    await deps.logs.add({
+      ...baseLog,
+      action: 'SKIPPED_NO_KEYWORD',
+      status: 'skipped',
+      message: `expected one of: ${triggerKeywords.join(', ')}`,
+    });
+    return { action: 'SKIPPED_NO_KEYWORD' };
   }
 
   // 1) DM the details to the commenter (private reply). If this fails (e.g.

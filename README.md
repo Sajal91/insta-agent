@@ -1,14 +1,21 @@
 # insta-agent — Instagram Reels Comment Auto-Reply Agent
 
-A backend server that automatically responds to comments on your Instagram Reels
-using the **Instagram Graph API (Meta)**. Messages are **static/templated** (no
-LLM/AI). Single-step flow:
+A backend server (+ a **React admin panel**) that automatically responds to
+comments on your Instagram posts/reels using the **Instagram Graph API (Meta)**.
+Messages are **static/templated** (no LLM/AI). Single-step flow:
 
-1. **New top-level comment** → the bot **sends the details as a private reply (DM)**
-   to the commenter, then **posts a public comment reply** saying the details have
-   been sent to their DM.
-2. Replies to comments (and the bot's own comments) are ignored — only fresh
+1. **New top-level comment** → if it contains one of the post's **accepted
+   keywords** (case-insensitive, e.g. `Interested`), the bot **sends the details
+   as a private reply (DM)** to the commenter, then **posts a public comment
+   reply** saying the details have been sent to their DM.
+2. Comments that don't match the post's keywords are skipped (no DM). If a post
+   has no keywords configured, every comment is accepted.
+3. Replies to comments (and the bot's own comments) are ignored — only fresh
    top-level comments trigger the flow.
+
+Per-post you can set (via the admin panel or API): **enabled on/off**, **accepted
+keywords**, the **details to DM**, and template overrides — so different posts can
+send different offers and require different keywords.
 
 > ⚠️ **DM requires an extra permission.** The private reply (DM) uses Instagram's
 > private-reply endpoint (`POST /{ig-id}/messages` with `recipient.comment_id`),
@@ -28,6 +35,7 @@ LLM/AI). Single-step flow:
 - **Zod** for env + request validation
 - **pino** for structured logging
 - **vitest** for tests
+- **React + TypeScript (Vite)** admin panel in `admin/`
 
 ---
 
@@ -43,6 +51,7 @@ src/
     logs.routes.ts              # paginated action log
     flows.routes.ts             # per-user delivery history (debugging)
     reply.routes.ts             # manual "send details" trigger
+    media.routes.ts             # list posts/reels + publish new post
   services/
     instagram.service.ts        # Graph API calls (DM, comment reply, fetch) + retries
     flow-engine.service.ts      # the DM + comment-reply logic (fully unit-tested)
@@ -59,6 +68,11 @@ src/
   app.ts
   server.ts
 test/                           # vitest (flow-engine)
+admin/                          # React + TypeScript admin panel (Vite)
+  src/
+    api.ts                      # typed fetch client (x-api-key)
+    App.tsx                     # tabs: Posts / Create / Templates / Logs
+    components/                 # PostsList, PostConfigModal, CreatePost, ...
 ```
 
 ---
@@ -86,6 +100,30 @@ templates (only if missing). Collections used: `processed_comments`,
 `reel_configs`, `flow_states`, `templates`, `logs`.
 
 Server boots on `PORT` (default `3000`). Health check: `GET /health`.
+
+### Admin panel (React + TypeScript)
+
+A Vite + React admin UI lives in `admin/`. It talks to this backend using the
+`x-api-key` (enter it in the top-right field; it's stored in `localStorage`).
+
+```bash
+cd admin
+npm install
+cp .env.example .env          # set VITE_API_BASE_URL if backend isn't on :3000
+npm run dev                   # http://localhost:5173
+```
+
+From the panel you can:
+
+- **Posts** — see all your posts/reels with thumbnails and their auto-reply status;
+  click one to set enabled on/off, accepted keywords, the details to DM, and
+  DM/comment-reply template overrides.
+- **Create post** — publish a new image or reel from a public media URL.
+- **Default templates** — edit the global fallback templates + default keywords.
+- **Activity log** — paginated view of every action the engine took.
+
+> Make sure the backend's `CORS_ORIGIN` allows the panel's origin (default `*`;
+> for a tighter setup set `CORS_ORIGIN=http://localhost:5173`).
 
 Other scripts:
 
@@ -116,6 +154,7 @@ Copy `.env.example` → `.env` and fill in:
 | `IG_GRAPH_BASE_URL` | API host: `https://graph.instagram.com` (Instagram Login, token starts with `IGAA`/`IGQ`) or `https://graph.facebook.com` (Facebook Login, Page token starts with `EAA`) |
 | `IG_VERIFY_TOKEN` | Arbitrary string; must match the token you enter in Meta's webhook config |
 | `API_KEY` | Protects internal routes; sent as the `x-api-key` header |
+| `CORS_ORIGIN` | Allowed origin(s) for the admin panel; `*` or comma-separated list |
 | `MONGODB_URI` | MongoDB connection string (local `mongodb://127.0.0.1:27017` or Atlas `mongodb+srv://...`) |
 | `MONGODB_DB` | Database name (default `insta_agent`) |
 
@@ -142,6 +181,7 @@ Set `IG_GRAPH_BASE_URL` to match how you obtained your token:
 - `instagram_business_basic`
 - `instagram_business_manage_comments` — read comments + post public replies
 - `instagram_business_manage_messages` — **required for the DM (private reply)**
+- `instagram_business_content_publish` — **required to publish posts/reels from the panel**
 
 **Instagram API with Facebook Login** (`https://graph.facebook.com`, Page token starts with `EAA`):
 
@@ -149,6 +189,7 @@ Set `IG_GRAPH_BASE_URL` to match how you obtained your token:
 - `instagram_manage_comments` — read comments + post public replies
 - `pages_read_engagement`, `pages_show_list`
 - `pages_messaging` — **required for the DM (private reply)**
+- `instagram_content_publish` — **required to publish posts/reels from the panel**
 - If the Page role was granted via Business Manager, also `ads_management` or `ads_read`
 
 > Scope names change over time — **verify against the latest Meta docs**:
@@ -208,6 +249,9 @@ For every incoming comment event (processed asynchronously off the request path)
    trigger the flow).
 4. **Fresh top-level comment** (no `parent_id`):
    - Skip if the reel is explicitly disabled, or the text hits a blocklist keyword.
+   - **Keyword gate** — if the post has accepted keywords, the comment must contain
+     one (case-insensitive) or it's skipped as `SKIPPED_NO_KEYWORD`. No keywords =
+     accept all. Per-post keywords override the global `DEFAULT_TRIGGER_KEYWORDS`.
    - **Send the DM** (private reply) with the detailed content → log `DM_SENT`.
    - **Post the public comment reply** ("sent to your DM") → log `COMMENT_REPLIED`.
    - Record a delivery row `{ igUserId, commentId, reelId, stage: COMPLETED }` and
@@ -257,11 +301,12 @@ All routes below require the `x-api-key: <API_KEY>` header. (The webhook routes 
 # List all reel configs
 curl -H "x-api-key: $API_KEY" localhost:3000/reels
 
-# Enable/disable + override DM/reply templates and offer content for a reel
+# Enable/disable + keywords + DM/reply templates + offer content for a post
 curl -X POST -H "x-api-key: $API_KEY" -H 'content-type: application/json' \
   -d '{
     "reelId": "17900000000000000",
     "enabled": true,
+    "triggerKeywords": ["Interested", "Required"],
     "dmTemplate": "Hey! Here is what you asked for: {{detailedMessageContent}}",
     "commentReplyTemplate": "Just DMed you the details 📩",
     "detailedMessageContent": "https://example.com/special-offer",
@@ -272,6 +317,18 @@ curl -X POST -H "x-api-key: $API_KEY" -H 'content-type: application/json' \
 # Get / delete one
 curl -H "x-api-key: $API_KEY" localhost:3000/reels/17900000000000000
 curl -X DELETE -H "x-api-key: $API_KEY" localhost:3000/reels/17900000000000000
+```
+
+### Media (posts/reels)
+
+```bash
+# List posts/reels (each annotated with its auto-reply config)
+curl -H "x-api-key: $API_KEY" localhost:3000/media
+
+# Publish a new post (IMAGE) or reel (REELS) from a PUBLIC media URL
+curl -X POST -H "x-api-key: $API_KEY" -H 'content-type: application/json' \
+  -d '{ "mediaType": "IMAGE", "mediaUrl": "https://cdn.example.com/pic.jpg", "caption": "Comment Interested!" }' \
+  localhost:3000/media
 ```
 
 ### Templates
@@ -323,6 +380,7 @@ DB, no network):
 
 - fresh comment → DM the details + post public reply (and record delivery)
 - per-reel DM/detailed-content override is applied
+- keyword gate: matching keyword (case-insensitive) → DM; non-matching → `SKIPPED_NO_KEYWORD`; no keywords → accept all
 - DM failure → `ERRORED`, and the public reply is **not** posted
 - reply comment (`parent_id`) → ignored
 - own comment / already-processed / disabled reel / blocklist → skipped

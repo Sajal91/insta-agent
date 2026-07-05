@@ -5,6 +5,7 @@ function mapDoc(doc: ReelConfigDoc): ReelConfig {
   return {
     reelId: doc._id,
     enabled: doc.enabled,
+    triggerKeywords: doc.triggerKeywords ?? [],
     dmTemplate: doc.dmTemplate,
     commentReplyTemplate: doc.commentReplyTemplate,
     blocklistKeywords: doc.blocklistKeywords ?? [],
@@ -17,6 +18,7 @@ function mapDoc(doc: ReelConfigDoc): ReelConfig {
 export interface ReelConfigInput {
   reelId: string;
   enabled?: boolean;
+  triggerKeywords?: string[] | null;
   dmTemplate?: string | null;
   commentReplyTemplate?: string | null;
   blocklistKeywords?: string[] | null;
@@ -48,10 +50,15 @@ export const reelsRepo = {
       input.blocklistKeywords === undefined
         ? existing?.blocklistKeywords ?? []
         : input.blocklistKeywords ?? [];
+    const triggers =
+      input.triggerKeywords === undefined
+        ? existing?.triggerKeywords ?? []
+        : input.triggerKeywords ?? [];
 
     const doc: ReelConfigDoc = {
       _id: input.reelId,
       enabled,
+      triggerKeywords: triggers,
       dmTemplate: input.dmTemplate ?? existing?.dmTemplate ?? null,
       commentReplyTemplate:
         input.commentReplyTemplate ?? existing?.commentReplyTemplate ?? null,

@@ -34,6 +34,7 @@ function makeDeps(overrides?: {
       : {
           reelId: 'reel-1',
           enabled: true,
+          triggerKeywords: [],
           dmTemplate: null,
           commentReplyTemplate: null,
           blocklistKeywords: [],
@@ -189,5 +190,52 @@ describe('flow-engine: skip cases', () => {
     );
     expect(result.action).toBe('SKIPPED_BLOCKLISTED');
     expect(dms).toHaveLength(0);
+  });
+});
+
+describe('flow-engine: per-post keyword gate (case-insensitive)', () => {
+  it('DMs when the comment contains an accepted keyword (any case)', async () => {
+    const { deps, dms } = makeDeps({
+      reelConfig: { triggerKeywords: ['Interested'] },
+    });
+    const result = await processCommentEvent(
+      freshComment({ text: "I'm INTERESTED!!" }),
+      deps,
+    );
+    expect(result.action).toBe('DETAILS_SENT');
+    expect(dms).toHaveLength(1);
+  });
+
+  it('skips when the comment does NOT contain the accepted keyword', async () => {
+    const { deps, dms, replies } = makeDeps({
+      reelConfig: { triggerKeywords: ['Interested'] },
+    });
+    const result = await processCommentEvent(
+      freshComment({ text: 'nice video' }),
+      deps,
+    );
+    expect(result.action).toBe('SKIPPED_NO_KEYWORD');
+    expect(dms).toHaveLength(0);
+    expect(replies).toHaveLength(0);
+  });
+
+  it('matches any keyword when multiple are configured', async () => {
+    const { deps } = makeDeps({
+      reelConfig: { triggerKeywords: ['Interested', 'Required'] },
+    });
+    const result = await processCommentEvent(
+      freshComment({ text: 'this is required for me' }),
+      deps,
+    );
+    expect(result.action).toBe('DETAILS_SENT');
+  });
+
+  it('accepts all comments when no keywords are configured', async () => {
+    const { deps } = makeDeps({ reelConfig: { triggerKeywords: [] } });
+    const result = await processCommentEvent(
+      freshComment({ text: 'literally anything' }),
+      deps,
+    );
+    expect(result.action).toBe('DETAILS_SENT');
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "insta-agent",
   "version": "1.0.0",
-  "description": "Automated agent that replies to Instagram Reels comments with a trust-based two-step follow-gate flow using the Instagram Graph API.",
+  "description": "Automated agent that DMs post details to Instagram commenters (keyword-gated) and replies publicly, with a React admin panel. Uses the Instagram Graph API.",
   "main": "dist/server.js",
   "engines": {
     "node": ">=20"
@@ -24,7 +24,6 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@types/cors": "^2.8.19",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
@@ -34,6 +33,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.5",
     "pino-pretty": "^13.0.0",
