@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { api } from '../api';
-import type { MediaItem, ReelConfig } from '../types';
+import type { MediaItem, MessageLink, ReelConfig } from '../types';
+
+const MAX_LINKS = 3;
+const MAX_LABEL = 20;
 
 function keywordsToText(list: string[]): string {
   return list.join(', ');
@@ -34,13 +37,30 @@ export function PostConfigModal({
   const [blocklist, setBlocklist] = useState(
     keywordsToText(cfg?.blocklistKeywords ?? []),
   );
+  const [links, setLinks] = useState<MessageLink[]>(cfg?.links ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function addLink() {
+    if (links.length >= MAX_LINKS) return;
+    setLinks((prev) => [...prev, { label: '', url: '' }]);
+  }
+  function updateLink(index: number, patch: Partial<MessageLink>) {
+    setLinks((prev) =>
+      prev.map((l, i) => (i === index ? { ...l, ...patch } : l)),
+    );
+  }
+  function removeLink(index: number) {
+    setLinks((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function save() {
     setSaving(true);
     setError(null);
     try {
+      const cleanedLinks = links
+        .map((l) => ({ label: l.label.trim(), url: l.url.trim() }))
+        .filter((l) => l.label && l.url);
       const { reel } = await api.saveReelConfig({
         reelId: media.id,
         enabled,
@@ -49,6 +69,7 @@ export function PostConfigModal({
         detailedMessageContent: detailed.trim() || null,
         dmTemplate: dmTemplate.trim() || null,
         commentReplyTemplate: replyTemplate.trim() || null,
+        links: cleanedLinks,
       });
       onSaved(reel);
     } catch (e) {
@@ -71,6 +92,7 @@ export function PostConfigModal({
         commentReplyTemplate: null,
         blocklistKeywords: [],
         detailedMessageContent: null,
+        links: [],
         createdAt: '',
         updatedAt: '',
       });
@@ -129,6 +151,52 @@ export function PostConfigModal({
             Injected into the DM via <code className="inline">{'{{detailedMessageContent}}'}</code>. Falls
             back to the global default if empty.
           </div>
+        </div>
+
+        <div className="field">
+          <label>DM link buttons (up to {MAX_LINKS})</label>
+          <div className="hint" style={{ marginBottom: 10 }}>
+            Sent as tappable buttons in the DM. Each needs a short label (max{' '}
+            {MAX_LABEL} chars) and a URL. Leave empty to send a plain-text DM.
+          </div>
+
+          {links.map((link, i) => (
+            <div className="link-row" key={i}>
+              <input
+                type="text"
+                value={link.label}
+                maxLength={MAX_LABEL}
+                placeholder="Click me"
+                onChange={(e) => updateLink(i, { label: e.target.value })}
+                style={{ flex: '0 0 140px' }}
+              />
+              <input
+                type="url"
+                value={link.url}
+                placeholder="https://your-link.com"
+                onChange={(e) => updateLink(i, { url: e.target.value })}
+              />
+              <button
+                type="button"
+                className="btn danger sm"
+                onClick={() => removeLink(i)}
+                title="Remove link"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          {links.length < MAX_LINKS && (
+            <button
+              type="button"
+              className="btn secondary sm"
+              onClick={addLink}
+              style={{ marginTop: links.length > 0 ? 4 : 0 }}
+            >
+              + Add link button
+            </button>
+          )}
         </div>
 
         <div className="field">

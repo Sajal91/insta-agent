@@ -447,6 +447,18 @@ code.inline {
   font-size: 12px;
 }
 
+.link-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.link-row input {
+  flex: 1;
+  min-width: 0;
+}
+
 .login-wrap {
   min-height: 100vh;
   display: flex;

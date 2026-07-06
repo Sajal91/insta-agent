@@ -1,5 +1,5 @@
 import { collections } from '../index';
-import type { ReelConfig, ReelConfigDoc } from '../types';
+import type { MessageLink, ReelConfig, ReelConfigDoc } from '../types';
 
 function mapDoc(doc: ReelConfigDoc): ReelConfig {
   return {
@@ -10,6 +10,7 @@ function mapDoc(doc: ReelConfigDoc): ReelConfig {
     commentReplyTemplate: doc.commentReplyTemplate,
     blocklistKeywords: doc.blocklistKeywords ?? [],
     detailedMessageContent: doc.detailedMessageContent,
+    links: doc.links ?? [],
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -23,6 +24,7 @@ export interface ReelConfigInput {
   commentReplyTemplate?: string | null;
   blocklistKeywords?: string[] | null;
   detailedMessageContent?: string | null;
+  links?: MessageLink[] | null;
 }
 
 /** Per-Reel overrides: enable/disable, keyword override, template overrides. */
@@ -54,6 +56,10 @@ export const reelsRepo = {
       input.triggerKeywords === undefined
         ? existing?.triggerKeywords ?? []
         : input.triggerKeywords ?? [];
+    const links =
+      input.links === undefined
+        ? existing?.links ?? []
+        : input.links ?? [];
 
     const doc: ReelConfigDoc = {
       _id: input.reelId,
@@ -67,6 +73,7 @@ export const reelsRepo = {
         input.detailedMessageContent ??
         existing?.detailedMessageContent ??
         null,
+      links,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };

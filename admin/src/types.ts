@@ -1,3 +1,8 @@
+export interface MessageLink {
+  label: string;
+  url: string;
+}
+
 export interface ReelConfig {
   reelId: string;
   enabled: boolean;
@@ -6,6 +11,7 @@ export interface ReelConfig {
   commentReplyTemplate: string | null;
   blocklistKeywords: string[];
   detailedMessageContent: string | null;
+  links: MessageLink[];
   createdAt: string;
   updatedAt: string;
 }
@@ -51,4 +57,5 @@ export type ReelConfigInput = {
   commentReplyTemplate?: string | null;
   blocklistKeywords?: string[] | null;
   detailedMessageContent?: string | null;
+  links?: MessageLink[] | null;
 };

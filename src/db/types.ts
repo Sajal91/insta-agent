@@ -21,6 +21,18 @@ export type ActionType =
 
 export type LogStatus = 'success' | 'skipped' | 'error';
 
+/**
+ * A single call-to-action link rendered as a button in the DM. Instagram's
+ * button template allows at most 3 buttons per message, and titles are capped
+ * at ~20 characters.
+ */
+export interface MessageLink {
+  /** Button label shown to the user, e.g. "Click me". */
+  label: string;
+  /** Destination URL (http/https). */
+  url: string;
+}
+
 // ---- MongoDB document shapes ----
 
 /** _id is the comment id. */
@@ -42,6 +54,8 @@ export interface ReelConfigDoc {
   commentReplyTemplate: string | null;
   blocklistKeywords: string[];
   detailedMessageContent: string | null;
+  /** CTA links sent as buttons in the DM (max 3). Empty = plain-text DM. */
+  links: MessageLink[];
   createdAt: string;
   updatedAt: string;
 }
@@ -92,6 +106,7 @@ export interface ReelConfig {
   commentReplyTemplate: string | null;
   blocklistKeywords: string[];
   detailedMessageContent: string | null;
+  links: MessageLink[];
   createdAt: string;
   updatedAt: string;
 }

@@ -7,6 +7,12 @@ import { asyncHandler, formatZodError } from '../utils/http';
 export const reelsRouter = Router();
 reelsRouter.use(requireAuth);
 
+const linkSchema = z.object({
+  // Instagram button titles are capped at 20 characters.
+  label: z.string().trim().min(1).max(20),
+  url: z.string().trim().url(),
+});
+
 const upsertSchema = z.object({
   reelId: z.string().min(1),
   enabled: z.boolean().optional(),
@@ -15,6 +21,8 @@ const upsertSchema = z.object({
   commentReplyTemplate: z.string().min(1).nullable().optional(),
   blocklistKeywords: z.array(z.string()).nullable().optional(),
   detailedMessageContent: z.string().nullable().optional(),
+  // Instagram's button template allows at most 3 buttons per message.
+  links: z.array(linkSchema).max(3).nullable().optional(),
 });
 
 reelsRouter.get(

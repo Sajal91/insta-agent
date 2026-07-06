@@ -8,7 +8,7 @@ import { reelsRepo } from '../db/repositories/reels.repo';
 import { templatesRepo } from '../db/repositories/templates.repo';
 import { logsRepo } from '../db/repositories/logs.repo';
 import { instagramService } from './instagram.service';
-import type { ActionType } from '../db/types';
+import type { ActionType, MessageLink } from '../db/types';
 
 /**
  * A normalized comment event. The webhook route maps Meta's raw payload into
@@ -78,6 +78,21 @@ async function resolveDetailedContent(
     return reel.detailedMessageContent;
   }
   return (await deps.templates.get('DETAILED_MESSAGE_CONTENT')) ?? '';
+}
+
+/**
+ * CTA links configured for this reel, sent as DM buttons. Only well-formed
+ * entries are kept, capped at Instagram's 3-button-per-message limit.
+ */
+async function resolveLinks(
+  deps: FlowDeps,
+  reelId: string,
+): Promise<MessageLink[]> {
+  const reel = await deps.reels.get(reelId);
+  const links = reel?.links ?? [];
+  return links
+    .filter((l) => l.label?.trim() && l.url?.trim())
+    .slice(0, 3);
 }
 
 async function isBlocklisted(
@@ -230,12 +245,18 @@ async function handleFreshComment(
     detailedMessageContent: detailed,
     username: event.fromUsername ?? '',
   });
-  const messageId = await deps.ig.sendPrivateReply(event.commentId, dmMessage);
+  // Any configured CTA links are attached as tappable buttons on the DM.
+  const links = await resolveLinks(deps, event.mediaId);
+  const messageId = await deps.ig.sendPrivateReply(
+    event.commentId,
+    dmMessage,
+    links,
+  );
   await deps.logs.add({
     ...baseLog,
     action: 'DM_SENT',
     status: 'success',
-    message: `message_id=${messageId}`,
+    message: `message_id=${messageId} buttons=${links.length}`,
   });
 
   // 2) Post the public comment reply pointing them to their DM.

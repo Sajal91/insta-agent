@@ -1,7 +1,35 @@
 import { config } from '../config/env';
 import { logger } from '../utils/logger';
+import type { MessageLink } from '../db/types';
 
 const BASE_URL = config.IG_GRAPH_BASE_URL;
+
+// Instagram button-template limits.
+const MAX_BUTTONS = 3;
+const MAX_BUTTON_TITLE = 20;
+const MAX_TEMPLATE_TEXT = 640;
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? value.slice(0, max) : value;
+}
+
+/** Build the Instagram button-template payload from a text + CTA links. */
+function buildButtonMessage(text: string, links: MessageLink[]): unknown {
+  return {
+    attachment: {
+      type: 'template',
+      payload: {
+        template_type: 'button',
+        text: truncate(text, MAX_TEMPLATE_TEXT),
+        buttons: links.slice(0, MAX_BUTTONS).map((link) => ({
+          type: 'web_url',
+          url: link.url,
+          title: truncate(link.label, MAX_BUTTON_TITLE),
+        })),
+      },
+    },
+  };
+}
 
 export interface GraphCommentAuthor {
   id?: string;
@@ -155,19 +183,34 @@ export const instagramService = {
    * Requires the `instagram_business_manage_messages` permission (Instagram Login)
    * / `pages_messaging` (Facebook Login) plus Advanced Access. Meta rules: one
    * private reply per comment, must be sent within 7 days of the comment.
-   * Returns the message id.
+   *
+   * When `links` are supplied, the message is sent as a button template so the
+   * CTAs render as tappable buttons (max 3, per Instagram's limit); otherwise a
+   * plain text message is sent. Returns the message id.
    */
-  async sendPrivateReply(commentId: string, message: string): Promise<string> {
+  async sendPrivateReply(
+    commentId: string,
+    message: string,
+    links: MessageLink[] = [],
+  ): Promise<string> {
+    const messageBody =
+      links.length > 0
+        ? buildButtonMessage(message, links)
+        : { text: message };
+
     const result = await graphRequest<{ message_id?: string; recipient_id?: string }>({
       method: 'POST',
       path: `${config.IG_BUSINESS_ACCOUNT_ID}/messages`,
       body: {
         recipient: { comment_id: commentId },
-        message: { text: message },
+        message: messageBody,
       },
     });
     const messageId = result.message_id ?? '';
-    logger.info({ commentId, messageId }, 'Sent private reply (DM) to commenter');
+    logger.info(
+      { commentId, messageId, buttons: Math.min(links.length, MAX_BUTTONS) },
+      'Sent private reply (DM) to commenter',
+    );
     return messageId;
   },
 
