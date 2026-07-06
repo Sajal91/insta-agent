@@ -52,6 +52,14 @@ const envSchema = z.object({
 
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   MONGODB_DB: z.string().min(1).default('insta_agent'),
+  // How long the driver waits to find a reachable server before failing. Atlas
+  // over the public internet needs more headroom than a local mongod.
+  MONGODB_SERVER_SELECTION_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15000),
+  MONGODB_MAX_POOL_SIZE: z.coerce.number().int().positive().default(10),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -79,3 +87,47 @@ export function loadConfig(): AppConfig {
 }
 
 export const config = loadConfig();
+
+/** True when running with NODE_ENV=production. */
+export const isProduction = config.NODE_ENV === 'production';
+/** True when running the local dev environment. */
+export const isDevelopment = config.NODE_ENV === 'development';
+
+/**
+ * Extra safety checks that only apply to production deploys (e.g. AWS). Returns
+ * a list of human-readable problems; the caller decides whether to warn or hard
+ * fail. Kept out of the zod schema so the same schema works for dev/test.
+ */
+export function getProductionConfigIssues(cfg: AppConfig = config): string[] {
+  if (cfg.NODE_ENV !== 'production') return [];
+
+  const issues: string[] = [];
+
+  // A local Mongo URI in production almost always means the Atlas string wasn't
+  // wired into the environment.
+  if (/(127\.0\.0\.1|localhost)/i.test(cfg.MONGODB_URI)) {
+    issues.push(
+      'MONGODB_URI points at localhost in production — set your MongoDB Atlas connection string.',
+    );
+  }
+
+  // Never ship the placeholder/dev secrets to production.
+  if (/change-me|dev-only/i.test(cfg.AUTH_SECRET)) {
+    issues.push('AUTH_SECRET is still a placeholder — set a strong random value.');
+  }
+  if (/change-me/i.test(cfg.API_KEY)) {
+    issues.push('API_KEY is still a placeholder — set a strong random value.');
+  }
+  if (/change-me/i.test(cfg.ADMIN_PASSWORD)) {
+    issues.push('ADMIN_PASSWORD is still a placeholder — set a real password.');
+  }
+
+  // Wide-open CORS in production is risky for a credentialed admin panel.
+  if (cfg.CORS_ORIGIN === '*') {
+    issues.push(
+      'CORS_ORIGIN is "*" in production — restrict it to your admin panel origin(s).',
+    );
+  }
+
+  return issues;
+}

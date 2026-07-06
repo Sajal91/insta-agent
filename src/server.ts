@@ -1,10 +1,25 @@
-import { config } from './config/env';
+import { config, getProductionConfigIssues, isProduction } from './config/env';
 import { logger } from './utils/logger';
 import { createApp } from './app';
 import { connectDb, closeDb } from './db';
 import { commentQueue } from './services/queue.service';
 
 async function main(): Promise<void> {
+  // Surface unsafe production settings early (localhost DB, placeholder secrets,
+  // wide-open CORS, ...) so a misconfigured deploy is obvious in the logs.
+  const prodIssues = getProductionConfigIssues();
+  if (prodIssues.length > 0) {
+    logger.warn(
+      { issues: prodIssues },
+      'Production configuration warnings — review before going live',
+    );
+  }
+
+  logger.info(
+    { env: config.NODE_ENV, production: isProduction },
+    'Starting insta-agent',
+  );
+
   // Connect to MongoDB (ensures indexes + seeds default templates) before serving.
   await connectDb();
 

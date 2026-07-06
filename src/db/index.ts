@@ -31,16 +31,64 @@ export const COLLECTIONS = {
 export async function connectDb(): Promise<Db> {
   if (db) return db;
 
-  client = new MongoClient(config.MONGODB_URI);
-  await client.connect();
+  const isSrv = config.MONGODB_URI.startsWith('mongodb+srv://');
+
+  client = new MongoClient(config.MONGODB_URI, {
+    appName: 'insta-agent',
+    serverSelectionTimeoutMS: config.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+    maxPoolSize: config.MONGODB_MAX_POOL_SIZE,
+    // Atlas uses replica sets; retryable writes are the recommended default.
+    retryWrites: true,
+  });
+
+  try {
+    await client.connect();
+    // Fail fast with a clear error if we authenticated but can't reach the DB.
+    await client.db(config.MONGODB_DB).command({ ping: 1 });
+  } catch (err) {
+    await client.close().catch(() => undefined);
+    client = null;
+    logConnectionError(err, isSrv);
+    throw err;
+  }
+
   db = client.db(config.MONGODB_DB);
 
   await ensureIndexes(db);
   await seedDefaultTemplates(db);
   await seedAdminUser(db);
 
-  logger.info({ db: config.MONGODB_DB }, 'MongoDB connected');
+  logger.info(
+    { db: config.MONGODB_DB, srv: isSrv },
+    'MongoDB connected',
+  );
   return db;
+}
+
+/**
+ * Turn the driver's low-level errors into an actionable hint. The vast majority
+ * of Atlas connection failures fall into one of these buckets.
+ */
+function logConnectionError(err: unknown, isSrv: boolean): void {
+  const name = err instanceof Error ? err.name : 'Error';
+  const message = err instanceof Error ? err.message : String(err);
+
+  let hint =
+    'Check MONGODB_URI, network access, and that the cluster is running.';
+
+  if (name === 'MongoServerSelectionError' || /server selection/i.test(message)) {
+    hint =
+      'Could not reach any MongoDB server. On Atlas: add this host/server IP (or 0.0.0.0/0 for testing) under Network Access, and confirm the cluster hostname is correct.';
+  } else if (/authentication failed|bad auth|SCRAM/i.test(message)) {
+    hint =
+      'Authentication failed. Verify the Atlas DB username/password. If the password contains special characters (@ : / ? # etc.) they MUST be percent-encoded in MONGODB_URI (e.g. "@" -> "%40").';
+  } else if (/ENOTFOUND|querySrv|EAI_AGAIN/i.test(message)) {
+    hint = isSrv
+      ? 'DNS lookup for the SRV record failed. Double-check the cluster hostname in your mongodb+srv:// URI and your network/DNS.'
+      : 'Host not found. Double-check the hostname in MONGODB_URI.';
+  }
+
+  logger.error({ err: { name, message }, hint }, 'MongoDB connection failed');
 }
 
 export function getDb(): Db {
