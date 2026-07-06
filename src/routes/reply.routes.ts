@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { config } from '../config/env';
-import { requireApiKey } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { asyncHandler, formatZodError } from '../utils/http';
 import { instagramService } from '../services/instagram.service';
 import { render } from '../services/template.service';
@@ -11,7 +11,7 @@ import { flowStateRepo } from '../db/repositories/flow-state.repo';
 import { logsRepo } from '../db/repositories/logs.repo';
 
 export const replyRouter = Router();
-replyRouter.use(requireApiKey);
+replyRouter.use(requireAuth);
 
 const manualSchema = z.object({
   commentId: z.string().min(1),

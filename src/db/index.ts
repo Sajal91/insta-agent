@@ -1,7 +1,9 @@
 import { MongoClient, type Db, type Collection } from 'mongodb';
 import { config } from '../config/env';
 import { logger } from '../utils/logger';
+import { hashPassword, verifyPassword } from '../utils/password';
 import type {
+  AdminUserDoc,
   FlowStateDoc,
   LogDoc,
   ProcessedCommentDoc,
@@ -23,6 +25,7 @@ export const COLLECTIONS = {
   flowStates: 'flow_states',
   templates: 'templates',
   logs: 'logs',
+  adminUsers: 'admin_users',
 } as const;
 
 export async function connectDb(): Promise<Db> {
@@ -34,6 +37,7 @@ export async function connectDb(): Promise<Db> {
 
   await ensureIndexes(db);
   await seedDefaultTemplates(db);
+  await seedAdminUser(db);
 
   logger.info({ db: config.MONGODB_DB }, 'MongoDB connected');
   return db;
@@ -70,6 +74,9 @@ export const collections = {
   },
   logs(): Collection<LogDoc> {
     return getDb().collection<LogDoc>(COLLECTIONS.logs);
+  },
+  adminUsers(): Collection<AdminUserDoc> {
+    return getDb().collection<AdminUserDoc>(COLLECTIONS.adminUsers);
   },
 };
 
@@ -136,4 +143,33 @@ Looking forward to speaking with you`,
       ],
     },
   });
+}
+
+/**
+ * Sync the admin login account from the environment into the database. We store
+ * only a scrypt hash of ADMIN_PASSWORD — never the plaintext. If the env email
+ * changed, any stale admin rows are removed so exactly one admin exists. The
+ * hash is only rewritten when the password actually changed, keeping the row
+ * stable across restarts.
+ */
+async function seedAdminUser(database: Db): Promise<void> {
+  const email = config.ADMIN_EMAIL.trim().toLowerCase();
+  const coll = database.collection<AdminUserDoc>(COLLECTIONS.adminUsers);
+
+  // Ensure there's only one admin, matching the current env email.
+  await coll.deleteMany({ _id: { $ne: email } });
+
+  const existing = await coll.findOne({ _id: email });
+  const now = new Date().toISOString();
+
+  if (existing && verifyPassword(config.ADMIN_PASSWORD, existing.passwordHash)) {
+    return;
+  }
+
+  await coll.updateOne(
+    { _id: email },
+    { $set: { passwordHash: hashPassword(config.ADMIN_PASSWORD), updatedAt: now } },
+    { upsert: true },
+  );
+  logger.info({ email }, 'Admin credentials synced to database');
 }

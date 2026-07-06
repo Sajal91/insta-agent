@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireApiKey } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { logsRepo } from '../db/repositories/logs.repo';
 import { asyncHandler, formatZodError } from '../utils/http';
 
 export const logsRouter = Router();
-logsRouter.use(requireApiKey);
+logsRouter.use(requireAuth);
 
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),

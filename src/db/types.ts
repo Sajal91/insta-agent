@@ -62,6 +62,16 @@ export interface TemplateDoc {
   updatedAt: string;
 }
 
+/**
+ * The single admin login account. _id is the (lowercased) email; only the
+ * scrypt password hash is stored — never the plaintext.
+ */
+export interface AdminUserDoc {
+  _id: string;
+  passwordHash: string;
+  updatedAt: string;
+}
+
 export interface LogDoc {
   commentId: string | null;
   igUserId: string | null;

@@ -31,6 +31,17 @@ const envSchema = z.object({
 
   API_KEY: z.string().min(1, 'API_KEY is required'),
 
+  // ---- Admin login (the /auth/login page) ----
+  // Credentials for the single admin user. The email/password are the source of
+  // truth here in the env; on boot we persist only a scrypt hash of the password
+  // to MongoDB (never the plaintext).
+  ADMIN_EMAIL: z.string().email('ADMIN_EMAIL must be a valid email'),
+  ADMIN_PASSWORD: z.string().min(8, 'ADMIN_PASSWORD must be at least 8 characters'),
+  // Secret used to sign admin session tokens (HMAC-SHA256). Keep it long/random.
+  AUTH_SECRET: z.string().min(16, 'AUTH_SECRET must be at least 16 characters'),
+  // How long an issued session token stays valid, in hours.
+  AUTH_TOKEN_TTL_HOURS: z.coerce.number().positive().default(12),
+
   // Allowed origin(s) for the admin panel (CORS). Comma-separated, or "*".
   CORS_ORIGIN: z.string().default('*'),
 

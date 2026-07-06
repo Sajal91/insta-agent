@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireApiKey } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { asyncHandler, formatZodError } from '../utils/http';
 import { instagramService } from '../services/instagram.service';
 import { reelsRepo } from '../db/repositories/reels.repo';
 
 export const mediaRouter = Router();
-mediaRouter.use(requireApiKey);
+mediaRouter.use(requireAuth);
 
 /**
  * List the account's posts/reels, each annotated with its auto-reply config (if

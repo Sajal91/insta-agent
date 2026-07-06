@@ -14,6 +14,7 @@ import { logsRouter } from './routes/logs.routes';
 import { flowsRouter } from './routes/flows.routes';
 import { replyRouter } from './routes/reply.routes';
 import { mediaRouter } from './routes/media.routes';
+import { authRouter } from './routes/auth.routes';
 
 export function createApp(): express.Express {
   const app = express();
@@ -26,7 +27,12 @@ export function createApp(): express.Express {
     config.CORS_ORIGIN === '*'
       ? '*'
       : config.CORS_ORIGIN.split(',').map((o) => o.trim());
-  app.use(cors({ origin: origins, allowedHeaders: ['content-type', 'x-api-key'] }));
+  app.use(
+    cors({
+      origin: origins,
+      allowedHeaders: ['content-type', 'x-api-key', 'authorization'],
+    }),
+  );
 
   // Capture the raw body so the webhook signature middleware can HMAC the exact
   // bytes Meta signed. Applied globally; harmless for the JSON API routes.
@@ -42,6 +48,7 @@ export function createApp(): express.Express {
     res.json({ status: 'ok', uptime: process.uptime() });
   });
 
+  app.use('/auth', authRouter);
   app.use('/webhooks', webhookRouter);
   app.use('/reels', reelsRouter);
   app.use('/templates', templatesRouter);

@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireApiKey } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { templatesRepo, type TemplateKey } from '../db/repositories/templates.repo';
 import { asyncHandler, formatZodError } from '../utils/http';
 
 export const templatesRouter = Router();
-templatesRouter.use(requireApiKey);
+templatesRouter.use(requireAuth);
 
 const putSchema = z
   .object({

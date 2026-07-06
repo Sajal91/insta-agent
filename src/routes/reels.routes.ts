@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireApiKey } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { reelsRepo } from '../db/repositories/reels.repo';
 import { asyncHandler, formatZodError } from '../utils/http';
 
 export const reelsRouter = Router();
-reelsRouter.use(requireApiKey);
+reelsRouter.use(requireAuth);
 
 const upsertSchema = z.object({
   reelId: z.string().min(1),

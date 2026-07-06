@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, getApiKey, setApiKey } from './api';
+import { api, clearToken, getToken } from './api';
+import { Login } from './components/Login';
 import { PostsList } from './components/PostsList';
 import { CreatePost } from './components/CreatePost';
 import { TemplatesEditor } from './components/TemplatesEditor';
@@ -16,26 +17,67 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function App() {
   const [tab, setTab] = useState<Tab>('posts');
-  const [apiKey, setKey] = useState(getApiKey());
+  const [authState, setAuthState] = useState<'checking' | 'out' | 'in'>(
+    'checking',
+  );
+  const [email, setEmail] = useState('');
   const [health, setHealth] = useState<'unknown' | 'ok' | 'down'>('unknown');
 
+  // Validate any stored token on load.
   useEffect(() => {
+    if (!getToken()) {
+      setAuthState('out');
+      return;
+    }
+    api
+      .me()
+      .then(({ email }) => {
+        setEmail(email);
+        setAuthState('in');
+      })
+      .catch(() => {
+        clearToken();
+        setAuthState('out');
+      });
+  }, []);
+
+  useEffect(() => {
+    if (authState !== 'in') return;
     api
       .health()
       .then(() => setHealth('ok'))
       .catch(() => setHealth('down'));
-  }, [apiKey]);
+  }, [authState]);
 
-  function saveKey(value: string) {
-    setApiKey(value);
-    setKey(value);
+  function logout() {
+    clearToken();
+    setEmail('');
+    setAuthState('out');
+  }
+
+  if (authState === 'checking') {
+    return <div className="empty">Loading…</div>;
+  }
+
+  if (authState === 'out') {
+    return (
+      <Login
+        onSuccess={(loggedInAs) => {
+          setEmail(loggedInAs);
+          setAuthState('in');
+        }}
+      />
+    );
   }
 
   return (
     <div className="app">
       <div className="topbar">
         <div className="brand">
-          insta<span>·</span>agent <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 14 }}>admin</span>
+          insta<span>·</span>agent{' '}
+          <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 14 }}>
+            admin
+          </span>
         </div>
         <div className="apikey-bar">
           <span
@@ -50,18 +92,17 @@ export function App() {
             }}
             title={`API ${health}`}
           />
-          <input
-            type="password"
-            placeholder="x-api-key"
-            value={apiKey}
-            onChange={(e) => saveKey(e.target.value)}
-            style={{ width: 220 }}
-          />
+          <span className="muted" style={{ fontSize: 13 }}>
+            {email}
+          </span>
+          <button className="btn secondary sm" onClick={logout}>
+            Log out
+          </button>
         </div>
       </div>
       <div className="hint">
         Backend: <code className="inline">{api.baseUrl}</code>
-        {health === 'down' && ' — not reachable / wrong API key'}
+        {health === 'down' && ' — not reachable'}
       </div>
 
       <div className="tabs">

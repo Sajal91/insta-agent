@@ -10,14 +10,18 @@ const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   'http://localhost:3000';
 
-const API_KEY_STORAGE = 'insta-agent.apiKey';
+const TOKEN_STORAGE = 'insta-agent.token';
 
-export function getApiKey(): string {
-  return localStorage.getItem(API_KEY_STORAGE) ?? '';
+export function getToken(): string {
+  return localStorage.getItem(TOKEN_STORAGE) ?? '';
 }
 
-export function setApiKey(key: string): void {
-  localStorage.setItem(API_KEY_STORAGE, key);
+export function setToken(token: string): void {
+  localStorage.setItem(TOKEN_STORAGE, token);
+}
+
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_STORAGE);
 }
 
 export class ApiError extends Error {
@@ -31,14 +35,19 @@ export class ApiError extends Error {
 
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown } = {},
+  options: { method?: string; body?: unknown; auth?: boolean } = {},
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  };
+  if (options.auth !== false) {
+    const token = getToken();
+    if (token) headers['authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
     method: options.method ?? 'GET',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': getApiKey(),
-    },
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
@@ -46,8 +55,13 @@ async function request<T>(
   const data = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    // A 401 on an authed request means the session expired / is invalid.
+    if (res.status === 401 && options.auth !== false) {
+      clearToken();
+    }
     const msg =
-      (data && (data.error || JSON.stringify(data))) || `Request failed (${res.status})`;
+      (data && (data.error || JSON.stringify(data))) ||
+      `Request failed (${res.status})`;
     throw new ApiError(msg, res.status);
   }
   return data as T;
@@ -56,7 +70,16 @@ async function request<T>(
 export const api = {
   baseUrl: BASE_URL,
 
-  health: () => request<{ status: string }>('/health'),
+  health: () => request<{ status: string }>('/health', { auth: false }),
+
+  login: (email: string, password: string) =>
+    request<{ token: string; email: string; expiresAt: string }>('/auth/login', {
+      method: 'POST',
+      body: { email, password },
+      auth: false,
+    }),
+
+  me: () => request<{ email: string; expiresAt: string }>('/auth/me'),
 
   listMedia: () => request<{ items: MediaItem[] }>('/media'),
 

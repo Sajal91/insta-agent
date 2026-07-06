@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { requireApiKey } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { flowStateRepo } from '../db/repositories/flow-state.repo';
 import { asyncHandler } from '../utils/http';
 
 export const flowsRouter = Router();
-flowsRouter.use(requireApiKey);
+flowsRouter.use(requireAuth);
 
 /** View a user's flow state/history — handy when debugging a support request. */
 flowsRouter.get(
