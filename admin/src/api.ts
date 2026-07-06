@@ -6,9 +6,10 @@ import type {
   Templates,
 } from './types';
 
-const BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
-  'http://localhost:3000';
+// When the panel is served by the Express backend (production/AWS), the API is
+// same-origin, so BASE_URL is empty (relative paths). For local dev the Vite
+// server sets VITE_API_BASE_URL to the backend, e.g. http://localhost:3000.
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 
 const TOKEN_STORAGE = 'insta-agent.token';
 

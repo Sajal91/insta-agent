@@ -1,3 +1,5 @@
+import path from 'node:path';
+import fs from 'node:fs';
 import express, {
   type ErrorRequestHandler,
   type Request,
@@ -57,7 +59,10 @@ export function createApp(): express.Express {
   app.use('/reply', replyRouter);
   app.use('/media', mediaRouter);
 
-  // 404 fallback.
+  // Serve the built admin SPA (single-origin deploy) if its dist folder exists.
+  serveAdminPanel(app);
+
+  // 404 fallback for anything unmatched (API paths, or non-GET on the SPA).
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' });
   });
@@ -71,4 +76,49 @@ export function createApp(): express.Express {
   app.use(errorHandler);
 
   return app;
+}
+
+/** Prefixes owned by the JSON API — never fall these back to the SPA index. */
+const API_PREFIXES = [
+  '/auth',
+  '/webhooks',
+  '/reels',
+  '/templates',
+  '/logs',
+  '/flows',
+  '/reply',
+  '/media',
+  '/health',
+];
+
+/**
+ * If the admin panel has been built, serve its static assets and route all
+ * non-API GET requests to index.html so client-side routing works. In dev the
+ * admin runs on the Vite server instead, so this is simply skipped when the
+ * dist folder is absent.
+ */
+function serveAdminPanel(app: express.Express): void {
+  const distPath =
+    config.ADMIN_DIST_PATH ?? path.resolve(__dirname, '../admin/dist');
+  const indexHtml = path.join(distPath, 'index.html');
+
+  if (!fs.existsSync(indexHtml)) {
+    logger.info(
+      { distPath },
+      'Admin panel build not found — serving API only',
+    );
+    return;
+  }
+
+  app.use(express.static(distPath));
+
+  app.get('*', (req: Request, res: Response, next) => {
+    if (API_PREFIXES.some((p) => req.path === p || req.path.startsWith(`${p}/`))) {
+      next();
+      return;
+    }
+    res.sendFile(indexHtml);
+  });
+
+  logger.info({ distPath }, 'Serving admin panel');
 }

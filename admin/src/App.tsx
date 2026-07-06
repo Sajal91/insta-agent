@@ -101,7 +101,8 @@ export function App() {
         </div>
       </div>
       <div className="hint">
-        Backend: <code className="inline">{api.baseUrl}</code>
+        Backend:{' '}
+        <code className="inline">{api.baseUrl || window.location.origin}</code>
         {health === 'down' && ' — not reachable'}
       </div>
 

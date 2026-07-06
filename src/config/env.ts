@@ -45,6 +45,11 @@ const envSchema = z.object({
   // Allowed origin(s) for the admin panel (CORS). Comma-separated, or "*".
   CORS_ORIGIN: z.string().default('*'),
 
+  // Path to the built admin panel (Vite output). When this directory exists the
+  // server also serves the admin SPA (single-origin deploy). Defaults to
+  // ../admin/dist relative to the compiled server.
+  ADMIN_DIST_PATH: z.string().optional(),
+
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   MONGODB_DB: z.string().min(1).default('insta_agent'),
 });
