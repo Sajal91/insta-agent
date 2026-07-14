@@ -29,6 +29,15 @@ import {
   PoweredBy,
   fadeUp,
 } from './components/ui';
+import {
+  avatar,
+  avatarFallback,
+  badge,
+  chip,
+  cx,
+  heading,
+  statusDot,
+} from './tw';
 
 type Tab = 'dashboard' | 'users' | 'posts' | 'create' | 'templates' | 'logs';
 
@@ -64,7 +73,7 @@ function Avatar({ user, size = 30 }: { user: User; size?: number }) {
   if (user.picture) {
     return (
       <img
-        className="avatar"
+        className={avatar}
         src={user.picture}
         alt=""
         style={{ width: size, height: size }}
@@ -73,7 +82,10 @@ function Avatar({ user, size = 30 }: { user: User; size?: number }) {
     );
   }
   return (
-    <span className="avatar fallback" style={{ width: size, height: size }}>
+    <span
+      className={cx(avatarFallback, 'text-[13px]')}
+      style={{ width: size, height: size }}
+    >
       {initials(user.name)}
     </span>
   );
@@ -167,58 +179,76 @@ export function App() {
 
   return (
     <UserMenuScroll onScrolled={setScrolled}>
-      <div className="shell">
-        {/* Sidebar */}
+      <div className="flex min-h-screen">
         {menuOpen && (
-          <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />
+          <div
+            className="fixed inset-0 z-39 bg-[rgba(17,24,39,0.4)] backdrop-blur-[2px]"
+            onClick={() => setMenuOpen(false)}
+          />
         )}
-        <aside className={`sidebar${menuOpen ? ' open' : ''}`}>
-          <div className="sidebar-brand">
+        <aside
+          className={cx(
+            'fixed top-0 left-0 bottom-0 w-[264px] z-40 flex flex-col px-4 py-5 bg-surface border-r border-border transition-transform duration-240 ease-out max-[900px]:-translate-x-full max-[900px]:shadow-lg',
+            menuOpen && 'max-[900px]:translate-x-0',
+          )}
+        >
+          <div className="flex items-center gap-2.5 pt-1.5 px-2 pb-[18px]">
             <BrandMark size={38} />
             <BrandName />
           </div>
 
-          <nav className="nav">
+          <nav className="flex flex-col gap-1 flex-1">
             <Section items={navItems} section="main" active={activeTab} onGo={go} />
             {navItems.some((n) => n.section === 'workspace') && (
               <>
-                <div className="nav-section">Workspace</div>
+                <div className="text-[11px] uppercase tracking-[0.08em] text-faint font-semibold px-2.5 pt-4 pb-2">
+                  Workspace
+                </div>
                 <Section items={navItems} section="workspace" active={activeTab} onGo={go} />
               </>
             )}
             {navItems.some((n) => n.section === 'admin') && (
               <>
-                <div className="nav-section">Admin</div>
+                <div className="text-[11px] uppercase tracking-[0.08em] text-faint font-semibold px-2.5 pt-4 pb-2">
+                  Admin
+                </div>
                 <Section items={navItems} section="admin" active={activeTab} onGo={go} />
               </>
             )}
           </nav>
 
-          <div className="sidebar-footer">
+          <div className="border-t border-border pt-3.5 mt-2">
             <PoweredBy />
           </div>
         </aside>
 
-        {/* Main */}
-        <div className="main">
-          <header className={`topbar${scrolled ? ' scrolled' : ''}`}>
-            <div className="flex" style={{ gap: 14 }}>
+        <div className="flex-1 min-w-0 flex flex-col ml-[264px] max-[900px]:ml-0">
+          <header
+            className={cx(
+              'sticky top-0 z-30 h-16 flex items-center justify-between gap-4 px-7 max-[620px]:px-4 border-b border-transparent transition-[background-color,border-color,backdrop-filter] duration-240',
+              scrolled &&
+                'bg-white/70 backdrop-blur-md backdrop-saturate-[1.8] border-b-border',
+            )}
+          >
+            <div className="flex items-center gap-3.5">
               <button
-                className="menu-btn"
+                className="hidden max-[900px]:flex items-center justify-center w-10 h-10 rounded-btn border border-border bg-surface text-text cursor-pointer"
                 onClick={() => setMenuOpen((v) => !v)}
                 aria-label="Toggle menu"
               >
                 {menuOpen ? <X size={20} /> : <Menu size={20} />}
               </button>
-              <div className="topbar-title">
-                <h1>{meta.title}</h1>
-                <span className="sub">{meta.sub}</span>
+              <div className="flex flex-col min-w-0">
+                <h1 className={cx(heading, 'text-xl leading-[1.2] max-[620px]:text-[17px]')}>
+                  {meta.title}
+                </h1>
+                <span className="text-[12.5px] text-muted">{meta.sub}</span>
               </div>
             </div>
 
-            <div className="topbar-actions">
-              <span className="chip">
-                <span className={`status-dot ${health}`} />
+            <div className="flex items-center gap-2.5">
+              <span className={chip}>
+                <span className={statusDot(health)} />
                 {health === 'ok'
                   ? 'All systems go'
                   : health === 'down'
@@ -226,15 +256,13 @@ export function App() {
                     : 'Checking…'}
               </span>
 
-              <div className="user-menu">
+              <div className="relative">
                 <button
-                  className="user-trigger"
+                  className="flex items-center gap-2 py-[5px] pl-[5px] pr-2.5 rounded-pill border border-border bg-surface text-[13px] text-text cursor-pointer transition-[box-shadow,border-color] duration-150 hover:shadow-sm hover:border-border-strong"
                   onClick={() => setUserMenu((v) => !v)}
                 >
                   <Avatar user={user} />
-                  <span
-                    style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}
-                  >
+                  <span className="max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">
                     {user.name?.split(' ')[0] ?? 'Account'}
                   </span>
                 </button>
@@ -242,29 +270,29 @@ export function App() {
                   {userMenu && (
                     <>
                       <div
-                        style={{ position: 'fixed', inset: 0, zIndex: 45 }}
+                        className="fixed inset-0 z-45"
                         onClick={() => setUserMenu(false)}
                       />
                       <motion.div
-                        className="dropdown"
+                        className="absolute right-0 top-[calc(100%+8px)] min-w-[240px] z-50 bg-surface border border-border rounded-card shadow-lg p-2"
                         initial={{ opacity: 0, y: -6, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -6, scale: 0.98 }}
                         transition={{ duration: 0.16 }}
                       >
-                        <div className="dd-head">
-                          <div className="nm">
+                        <div className="px-2.5 pt-2 pb-2.5 border-b border-border mb-1.5">
+                          <div className="font-semibold">
                             {user.name}
                             {isAdmin && (
-                              <span className="badge kw" style={{ marginLeft: 8 }}>
-                                admin
-                              </span>
+                              <span className={cx(badge.kw, 'ml-2')}>admin</span>
                             )}
                           </div>
-                          <div className="em">{user.email}</div>
+                          <div className="text-xs text-muted break-all">
+                            {user.email}
+                          </div>
                         </div>
                         <button
-                          className="dropdown-item danger"
+                          className="flex items-center gap-2.5 w-full px-2.5 py-2.5 rounded-btn text-[13.5px] text-red cursor-pointer text-left hover:bg-red-soft"
                           onClick={logout}
                         >
                           <LogOut size={16} /> Log out
@@ -277,7 +305,7 @@ export function App() {
             </div>
           </header>
 
-          <main className="content">
+          <main className="w-full max-w-[1240px] px-7 pt-6 pb-[72px] max-[620px]:px-4 max-[620px]:pt-4 max-[620px]:pb-14">
             {!canAutomate && !isAdmin && activeTab === 'dashboard' ? (
               <motion.div {...fadeUp}>
                 <RequestAutomation user={user} onUpdated={setUser} />
@@ -326,13 +354,26 @@ function Section({
         .filter((n) => n.section === section)
         .map((n) => {
           const Icon = n.icon;
+          const isActive = active === n.id;
           return (
             <button
               key={n.id}
-              className={`nav-item${active === n.id ? ' active' : ''}`}
               onClick={() => onGo(n.id)}
+              className={cx(
+                'group flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-btn text-sm font-sans cursor-pointer relative transition-colors duration-150',
+                isActive
+                  ? 'bg-accent-soft text-accent font-semibold'
+                  : 'text-muted font-medium hover:bg-surface-2 hover:text-text',
+              )}
             >
-              <Icon size={20} strokeWidth={2} />
+              <Icon
+                size={20}
+                strokeWidth={2}
+                className={cx(
+                  'shrink-0',
+                  isActive ? 'text-accent' : 'text-faint group-hover:text-muted',
+                )}
+              />
               {n.label}
             </button>
           );
@@ -350,12 +391,11 @@ function UserMenuScroll({
   onScrolled: (v: boolean) => void;
 }) {
   useEffect(() => {
-    const el = document.querySelector('.content') as HTMLElement | null;
+    const el = document.querySelector('main') as HTMLElement | null;
     function onScroll() {
       onScrolled(window.scrollY > 8);
     }
     window.addEventListener('scroll', onScroll, { passive: true });
-    // content may scroll internally on some layouts
     el?.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       window.removeEventListener('scroll', onScroll);

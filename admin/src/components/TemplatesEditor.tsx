@@ -3,6 +3,19 @@ import { motion } from 'framer-motion';
 import { KeyRound, MessageSquareText, Save, Send } from 'lucide-react';
 import { api } from '../api';
 import { Banner, LoadingBlock, fadeUp, useToast } from './ui';
+import {
+  btn,
+  card,
+  codeInline,
+  cx,
+  field,
+  heading,
+  hint,
+  input,
+  label,
+  sectionHead,
+  textarea,
+} from '../tw';
 
 export function TemplatesEditor() {
   const [dm, setDm] = useState('');
@@ -61,14 +74,14 @@ export function TemplatesEditor() {
 
   return (
     <div>
-      <div className="section-head">
-        <div className="titles">
-          <h2>Default templates</h2>
-          <div className="sub">
+      <div className={sectionHead}>
+        <div>
+          <h2 className={cx(heading, 'text-2xl')}>Default templates</h2>
+          <div className="text-muted text-sm mt-1">
             Account fallbacks, used whenever a post has no override.
           </div>
         </div>
-        <button className="btn" onClick={save} disabled={saving}>
+        <button className={btn.primary} onClick={save} disabled={saving}>
           {saving ? (
             'Saving…'
           ) : (
@@ -81,51 +94,51 @@ export function TemplatesEditor() {
 
       <Banner kind="info">
         Placeholders you can use:{' '}
-        <code className="inline">{'{{detailedMessageContent}}'}</code>,{' '}
-        <code className="inline">{'{{pageHandle}}'}</code>,{' '}
-        <code className="inline">{'{{username}}'}</code>.
+        <code className={codeInline}>{'{{detailedMessageContent}}'}</code>,{' '}
+        <code className={codeInline}>{'{{pageHandle}}'}</code>,{' '}
+        <code className={codeInline}>{'{{username}}'}</code>.
       </Banner>
 
       {error && <Banner kind="error">{error}</Banner>}
       {okMsg && <Banner kind="ok">{okMsg}</Banner>}
 
-      <motion.div className="card" style={{ maxWidth: 760 }} {...fadeUp}>
-        <div className="field">
-          <label>
-            <span className="flex" style={{ gap: 7 }}>
-              <Send size={15} /> DM template
-            </span>
+      <motion.div className={cx(card, 'max-w-[760px]')} {...fadeUp}>
+        <div className={field}>
+          <label className={cx(label, 'flex items-center gap-[7px]')}>
+            <Send size={15} /> DM template
           </label>
-          <textarea value={dm} onChange={(e) => setDm(e.target.value)} />
+          <textarea className={textarea} value={dm} onChange={(e) => setDm(e.target.value)} />
         </div>
-        <div className="field">
-          <label>
-            <span className="flex" style={{ gap: 7 }}>
-              <MessageSquareText size={15} /> Public comment reply
-            </span>
+        <div className={field}>
+          <label className={cx(label, 'flex items-center gap-[7px]')}>
+            <MessageSquareText size={15} /> Public comment reply
           </label>
-          <textarea value={reply} onChange={(e) => setReply(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Default details content</label>
           <textarea
+            className={textarea}
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+          />
+        </div>
+        <div className={field}>
+          <label className={label}>Default details content</label>
+          <textarea
+            className={textarea}
             value={detailed}
             onChange={(e) => setDetailed(e.target.value)}
           />
         </div>
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label>
-            <span className="flex" style={{ gap: 7 }}>
-              <KeyRound size={15} /> Default accepted keywords
-            </span>
+        <div className={cx(field, 'mb-0')}>
+          <label className={cx(label, 'flex items-center gap-[7px]')}>
+            <KeyRound size={15} /> Default accepted keywords
           </label>
           <input
             type="text"
+            className={input}
             value={keywords}
             placeholder="Interested, Info"
             onChange={(e) => setKeywords(e.target.value)}
           />
-          <div className="hint">
+          <div className={hint}>
             Comma-separated, case-insensitive. Applied to posts that don't define
             their own keywords. Empty = reply to all comments.
           </div>

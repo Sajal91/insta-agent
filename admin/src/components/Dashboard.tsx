@@ -3,12 +3,12 @@ import { motion } from 'framer-motion';
 import {
   Activity,
   ArrowUpRight,
+  AtSign,
   BarChart3,
   Bot,
   CheckCircle2,
   CircleSlash,
   Images,
-  AtSign,
   MessageSquareText,
   PlusCircle,
   Send,
@@ -31,6 +31,21 @@ import {
 import { api } from '../api';
 import type { LogEntry, MediaItem, User } from '../types';
 import { EmptyState, Skeleton, fadeUp, stagger } from './ui';
+import {
+  IG_BG,
+  IG_SOFT_CARD,
+  badge,
+  banner,
+  btn,
+  btnSm,
+  card,
+  cx,
+  heading,
+  panelHead,
+  sectionHead,
+  statIcon,
+  statusDot,
+} from '../tw';
 
 type NavKey =
   | 'dashboard'
@@ -52,7 +67,7 @@ function timeAgo(iso: string): string {
 
 function StatCard({
   icon: Icon,
-  variant,
+  variant = 'accent',
   label,
   value,
   delta,
@@ -66,23 +81,35 @@ function StatCard({
   index: number;
 }) {
   return (
-    <motion.div className="stat-card" {...stagger(index)}>
-      <div className="stat-top">
-        <span className={`stat-icon ${variant === 'accent' ? '' : variant ?? ''}`}>
+    <motion.div
+      className="bg-surface border border-border rounded-card shadow-sm p-[22px] flex flex-col gap-3.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+      {...stagger(index)}
+    >
+      <div className="flex items-center justify-between">
+        <span className={statIcon[variant]}>
           <Icon size={22} />
         </span>
         {delta && (
-          <span className={`stat-delta ${delta.dir}`}>
+          <span
+            className={cx(
+              'inline-flex items-center gap-1 text-xs font-semibold',
+              delta.dir === 'up'
+                ? 'text-green'
+                : delta.dir === 'down'
+                  ? 'text-red'
+                  : 'text-muted',
+            )}
+          >
             {delta.dir === 'up' && <TrendingUp size={14} />}
             {delta.text}
           </span>
         )}
       </div>
       <div>
-        <div className="stat-value">{value}</div>
-        <div className="stat-label" style={{ marginTop: 6 }}>
-          {label}
+        <div className="text-[30px] font-extrabold tracking-[-0.03em] leading-none">
+          {value}
         </div>
+        <div className="text-[13px] text-muted font-medium mt-1.5">{label}</div>
       </div>
     </motion.div>
   );
@@ -173,81 +200,86 @@ export function Dashboard({
 
   return (
     <div>
-      <motion.div className="section-head" {...fadeUp}>
-        <div className="titles">
-          <h2>
+      <motion.div className={sectionHead} {...fadeUp}>
+        <div>
+          <h2 className={cx(heading, 'text-2xl')}>
             Welcome back{user.name ? `, ${user.name.split(' ')[0]}` : ''} 👋
           </h2>
-          <div className="sub">
+          <div className="text-muted text-sm mt-1">
             Here's how your Instagram automation is performing today.
           </div>
         </div>
-        <button className="btn premium" onClick={() => onNavigate('create')}>
+        <button className={btn.premium} onClick={() => onNavigate('create')}>
           <Sparkles size={18} />
           New post
         </button>
       </motion.div>
 
       {/* stat cards */}
-      {loading ? (
-        <div className="stat-grid">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="stat-card">
-              <Skeleton w={44} h={44} radius={12} />
-              <Skeleton w="60%" h={28} />
-              <Skeleton w="40%" h={12} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="stat-grid">
-          <StatCard
-            index={0}
-            icon={Images}
-            variant="accent"
-            label="Total posts & reels"
-            value={stats.totalPosts}
-          />
-          <StatCard
-            index={1}
-            icon={Bot}
-            variant="ig"
-            label="Active automations"
-            value={stats.active}
-            delta={{ dir: 'up', text: `${stats.configured} configured` }}
-          />
-          <StatCard
-            index={2}
-            icon={Send}
-            variant="green"
-            label="Replies sent"
-            value={stats.dms}
-          />
-          <StatCard
-            index={3}
-            icon={BarChart3}
-            variant="amber"
-            label="Success rate"
-            value={`${stats.rate}%`}
-          />
-        </div>
-      )}
+      <div className="grid gap-5 grid-cols-4 max-[1100px]:grid-cols-2 max-[620px]:grid-cols-1">
+        {loading
+          ? [0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="bg-surface border border-border rounded-card shadow-sm p-[22px] flex flex-col gap-3.5"
+              >
+                <Skeleton w={44} h={44} radius={12} />
+                <Skeleton w="60%" h={28} />
+                <Skeleton w="40%" h={12} />
+              </div>
+            ))
+          : (
+              <>
+                <StatCard
+                  index={0}
+                  icon={Images}
+                  variant="accent"
+                  label="Total posts & reels"
+                  value={stats.totalPosts}
+                />
+                <StatCard
+                  index={1}
+                  icon={Bot}
+                  variant="ig"
+                  label="Active automations"
+                  value={stats.active}
+                  delta={{ dir: 'up', text: `${stats.configured} configured` }}
+                />
+                <StatCard
+                  index={2}
+                  icon={Send}
+                  variant="green"
+                  label="Replies sent"
+                  value={stats.dms}
+                />
+                <StatCard
+                  index={3}
+                  icon={BarChart3}
+                  variant="amber"
+                  label="Success rate"
+                  value={`${stats.rate}%`}
+                />
+              </>
+            )}
+      </div>
 
       {/* main grid */}
-      <div className="dash-grid" style={{ marginTop: 20 }}>
+      <div className="grid gap-5 items-start grid-cols-[1.6fr_1fr] max-[1100px]:grid-cols-1 mt-5">
         {/* left column */}
-        <div className="stack">
-          <motion.div className="card" {...fadeUp}>
-            <div className="panel-head">
+        <div className="flex flex-col gap-4">
+          <motion.div className={card} {...fadeUp}>
+            <div className={panelHead}>
               <div>
-                <h3>Automation activity</h3>
-                <div className="sub">Successful replies over the last 7 days</div>
+                <h3 className={cx(heading, 'text-base')}>Automation activity</h3>
+                <div className="text-[12.5px] text-muted">
+                  Successful replies over the last 7 days
+                </div>
               </div>
-              <span className="badge kw">
+              <span className={badge.kw}>
                 <Activity size={13} /> Live
               </span>
             </div>
-            <div style={{ width: '100%', height: 240 }}>
+            <div className="w-full h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
                   data={chartData}
@@ -301,25 +333,27 @@ export function Dashboard({
           </motion.div>
 
           {/* recent activity */}
-          <motion.div className="card" {...fadeUp}>
-            <div className="panel-head">
+          <motion.div className={card} {...fadeUp}>
+            <div className={panelHead}>
               <div>
-                <h3>Recent activity</h3>
-                <div className="sub">Latest automation events</div>
+                <h3 className={cx(heading, 'text-base')}>Recent activity</h3>
+                <div className="text-[12.5px] text-muted">
+                  Latest automation events
+                </div>
               </div>
               <button
-                className="btn ghost sm"
+                className={cx(btn.ghost, btnSm)}
                 onClick={() => onNavigate('logs')}
               >
                 View all <ArrowUpRight size={15} />
               </button>
             </div>
             {loading ? (
-              <div className="stack">
+              <div className="flex flex-col gap-4">
                 {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="flex" style={{ gap: 12 }}>
+                  <div key={i} className="flex items-center gap-3">
                     <Skeleton w={34} h={34} radius={10} />
-                    <div className="grow">
+                    <div className="flex-1">
                       <Skeleton w="50%" h={13} />
                       <Skeleton w="30%" h={11} style={{ marginTop: 6 }} />
                     </div>
@@ -331,7 +365,7 @@ export function Dashboard({
                 Once your automations start replying, events will appear here.
               </EmptyState>
             ) : (
-              <div className="activity">
+              <div className="flex flex-col">
                 {recent.map((l) => {
                   const Icon =
                     l.status === 'success'
@@ -339,18 +373,32 @@ export function Dashboard({
                       : l.status === 'error'
                         ? XCircle
                         : CircleSlash;
+                  const iconCls =
+                    l.status === 'success'
+                      ? 'bg-green-soft text-green'
+                      : l.status === 'error'
+                        ? 'bg-red-soft text-red'
+                        : 'bg-surface-2 text-faint';
                   return (
-                    <div className="activity-item" key={l.id}>
-                      <span className={`activity-icon ${l.status}`}>
+                    <div
+                      className="flex gap-3 py-3 border-b border-border last:border-b-0"
+                      key={l.id}
+                    >
+                      <span
+                        className={cx(
+                          'flex items-center justify-center w-[34px] h-[34px] rounded-[10px] shrink-0',
+                          iconCls,
+                        )}
+                      >
                         <Icon size={17} />
                       </span>
-                      <div className="activity-body">
-                        <div className="a-title">{l.action}</div>
-                        <div className="a-meta">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13.5px] font-medium">{l.action}</div>
+                        <div className="text-xs text-muted mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">
                           {l.message ?? l.commentId ?? 'Automation event'}
                         </div>
                       </div>
-                      <span className="activity-time">
+                      <span className="text-[11.5px] text-faint whitespace-nowrap shrink-0">
                         {timeAgo(l.createdAt)}
                       </span>
                     </div>
@@ -362,50 +410,64 @@ export function Dashboard({
         </div>
 
         {/* right column */}
-        <div className="stack">
+        <div className="flex flex-col gap-4">
           {/* subscription */}
-          <motion.div className="sub-card" {...fadeUp}>
-            <div className="flex between">
-              <span className="plan">
+          <motion.div
+            className={cx(
+              IG_SOFT_CARD,
+              'border border-border rounded-card shadow-sm p-[22px]',
+            )}
+            {...fadeUp}
+          >
+            <div className="flex items-center justify-between">
+              <span
+                className={cx(
+                  'inline-flex items-center gap-1.5 text-xs font-bold text-white rounded-pill px-3 py-1 tracking-[0.02em]',
+                  IG_BG,
+                )}
+              >
                 <Sparkles size={13} /> PRO
               </span>
-              <span className="badge on">Active</span>
+              <span className={badge.on}>Active</span>
             </div>
-            <h3 style={{ marginTop: 16, fontSize: 18 }}>InstaPilot Pro</h3>
-            <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+            <h3 className={cx(heading, 'text-lg mt-4')}>InstaPilot Pro</h3>
+            <div className="text-[13px] text-muted mt-1">
               Unlimited automations & AI replies for your account.
             </div>
-            <div style={{ marginTop: 18 }}>
-              <div className="usage-row">
-                <div className="usage-meta">
-                  <span className="lbl">Monthly replies</span>
-                  <span className="val">
+            <div className="mt-[18px]">
+              <div className="flex flex-col gap-2 mb-[18px]">
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-muted font-medium">Monthly replies</span>
+                  <span className="font-semibold">
                     {stats.dms.toLocaleString()} / 10,000
                   </span>
                 </div>
-                <div className="progress">
+                <div className="h-2 rounded-pill bg-surface-2 overflow-hidden">
                   <span
+                    className={cx(
+                      'block h-full rounded-pill bg-size-[200%_100%] animate-gradient-slow',
+                      IG_BG,
+                    )}
                     style={{
                       width: `${Math.min(100, (stats.dms / 10000) * 100)}%`,
                     }}
                   />
                 </div>
               </div>
-              <div className="usage-row">
-                <div className="usage-meta">
-                  <span className="lbl">Automated posts</span>
-                  <span className="val">
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-muted font-medium">Automated posts</span>
+                  <span className="font-semibold">
                     {stats.configured} / {Math.max(stats.totalPosts, 25)}
                   </span>
                 </div>
-                <div className="progress">
+                <div className="h-2 rounded-pill bg-surface-2 overflow-hidden">
                   <span
-                    className="plain"
+                    className="block h-full rounded-pill bg-accent"
                     style={{
                       width: `${Math.min(
                         100,
-                        (stats.configured / Math.max(stats.totalPosts, 25)) *
-                          100,
+                        (stats.configured / Math.max(stats.totalPosts, 25)) * 100,
                       )}%`,
                     }}
                   />
@@ -415,31 +477,28 @@ export function Dashboard({
           </motion.div>
 
           {/* connected account */}
-          <motion.div className="card" {...fadeUp}>
-            <div className="panel-head">
-              <h3>Connected account</h3>
+          <motion.div className={card} {...fadeUp}>
+            <div className={panelHead}>
+              <h3 className={cx(heading, 'text-base')}>Connected account</h3>
             </div>
-            <div className="flex" style={{ gap: 12 }}>
-              <span
-                className="stat-icon ig"
-                style={{ width: 46, height: 46 }}
-              >
+            <div className="flex items-center gap-3">
+              <span className={cx(statIcon.ig, 'w-[46px] h-[46px]')}>
                 <AtSign size={22} />
               </span>
-              <div className="grow" style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600 }}>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold">
                   {cred.pageHandle ? `@${cred.pageHandle}` : 'Instagram Business'}
                 </div>
-                <div className="muted" style={{ fontSize: 12.5 }}>
+                <div className="text-[12.5px] text-muted">
                   {cred.configured
                     ? `Connected · ${cred.source}`
                     : 'Not connected yet'}
                 </div>
               </div>
-              <span className={`status-dot ${cred.configured ? 'ok' : 'down'}`} />
+              <span className={statusDot(cred.configured ? 'ok' : 'down')} />
             </div>
             {!cred.configured && (
-              <div className="banner warn" style={{ margin: '16px 0 0' }}>
+              <div className={cx(banner.warn, 'mt-4 mb-0')}>
                 An admin needs to configure your Instagram credentials before
                 automations can run.
               </div>
@@ -447,80 +506,75 @@ export function Dashboard({
           </motion.div>
 
           {/* quick actions */}
-          <motion.div className="card" {...fadeUp}>
-            <div className="panel-head">
-              <h3>Quick actions</h3>
+          <motion.div className={card} {...fadeUp}>
+            <div className={panelHead}>
+              <h3 className={cx(heading, 'text-base')}>Quick actions</h3>
             </div>
-            <div className="quick-actions">
-              <button
-                className="quick-action"
+            <div className="grid gap-3 grid-cols-2 max-[620px]:grid-cols-1">
+              <QuickAction
+                icon={PlusCircle}
+                title="Create post"
+                desc="Publish to Instagram"
                 onClick={() => onNavigate('create')}
-              >
-                <span className="qa-icon">
-                  <PlusCircle size={20} />
-                </span>
-                <span className="qa-text">
-                  <div className="t">Create post</div>
-                  <div className="d">Publish to Instagram</div>
-                </span>
-              </button>
-              <button
-                className="quick-action"
+              />
+              <QuickAction
+                icon={Zap}
+                title="Automations"
+                desc="Set up auto-replies"
                 onClick={() => onNavigate('posts')}
-              >
-                <span className="qa-icon">
-                  <Zap size={20} />
-                </span>
-                <span className="qa-text">
-                  <div className="t">Automations</div>
-                  <div className="d">Set up auto-replies</div>
-                </span>
-              </button>
-              <button
-                className="quick-action"
+              />
+              <QuickAction
+                icon={MessageSquareText}
+                title="Templates"
+                desc="Edit default messages"
                 onClick={() => onNavigate('templates')}
-              >
-                <span className="qa-icon">
-                  <MessageSquareText size={20} />
-                </span>
-                <span className="qa-text">
-                  <div className="t">Templates</div>
-                  <div className="d">Edit default messages</div>
-                </span>
-              </button>
+              />
               {isAdmin ? (
-                <button
-                  className="quick-action"
+                <QuickAction
+                  icon={UsersIcon}
+                  title="Users"
+                  desc={userCount !== null ? `${userCount} members` : 'Manage access'}
                   onClick={() => onNavigate('users')}
-                >
-                  <span className="qa-icon">
-                    <UsersIcon size={20} />
-                  </span>
-                  <span className="qa-text">
-                    <div className="t">Users</div>
-                    <div className="d">
-                      {userCount !== null ? `${userCount} members` : 'Manage access'}
-                    </div>
-                  </span>
-                </button>
+                />
               ) : (
-                <button
-                  className="quick-action"
+                <QuickAction
+                  icon={Activity}
+                  title="Activity"
+                  desc="View full log"
                   onClick={() => onNavigate('logs')}
-                >
-                  <span className="qa-icon">
-                    <Activity size={20} />
-                  </span>
-                  <span className="qa-text">
-                    <div className="t">Activity</div>
-                    <div className="d">View full log</div>
-                  </span>
-                </button>
+                />
               )}
             </div>
           </motion.div>
         </div>
       </div>
     </div>
+  );
+}
+
+function QuickAction({
+  icon: Icon,
+  title,
+  desc,
+  onClick,
+}: {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="flex items-center gap-3 p-4 rounded-btn border border-border bg-surface cursor-pointer text-left transition duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-accent"
+      onClick={onClick}
+    >
+      <span className="flex items-center justify-center w-[38px] h-[38px] rounded-[10px] bg-accent-soft text-accent shrink-0">
+        <Icon size={20} />
+      </span>
+      <span>
+        <span className="block text-[13.5px] font-semibold">{title}</span>
+        <span className="block text-xs text-muted">{desc}</span>
+      </span>
+    </button>
   );
 }

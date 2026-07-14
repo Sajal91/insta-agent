@@ -1,14 +1,25 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import {
-  Film,
-  Image as ImageIcon,
-  Info,
-  Send,
-  Sparkles,
-} from 'lucide-react';
+import { Film, Image as ImageIcon, Info, Send, Sparkles } from 'lucide-react';
 import { api } from '../api';
 import { Banner, fadeUp, useToast } from './ui';
+import {
+  badge,
+  btn,
+  card,
+  cx,
+  field,
+  heading,
+  hint,
+  input,
+  label,
+  panelHead,
+  sectionHead,
+  textarea,
+} from '../tw';
+
+const tabInline =
+  'flex-1 border-0 bg-transparent px-3.5 py-[7px] rounded-[9px] font-sans text-[13px] font-medium cursor-pointer transition-colors duration-150';
 
 export function CreatePost() {
   const [mediaType, setMediaType] = useState<'IMAGE' | 'REELS'>('IMAGE');
@@ -46,79 +57,93 @@ export function CreatePost() {
 
   return (
     <div>
-      <div className="section-head">
-        <div className="titles">
-          <h2>Create a new post</h2>
-          <div className="sub">Publish an image or reel straight to Instagram.</div>
+      <div className={sectionHead}>
+        <div>
+          <h2 className={cx(heading, 'text-2xl')}>Create a new post</h2>
+          <div className="text-muted text-sm mt-1">
+            Publish an image or reel straight to Instagram.
+          </div>
         </div>
       </div>
 
       <Banner kind="info">
         Instagram publishes from a <strong>public URL</strong> — Meta downloads
-        the file itself, so <code className="inline">localhost</code> won't work.
+        the file itself, so <code className="bg-surface-2 border border-border text-accent px-1.5 py-px rounded-md text-xs font-mono">localhost</code> won't work.
         Host the media somewhere public (S3, Cloudinary, etc.) and paste the URL.
-        Requires the <code className="inline">instagram_content_publish</code>{' '}
+        Requires the{' '}
+        <code className="bg-surface-2 border border-border text-accent px-1.5 py-px rounded-md text-xs font-mono">instagram_content_publish</code>{' '}
         permission.
       </Banner>
 
       {error && <Banner kind="error">{error}</Banner>}
       {okMsg && <Banner kind="ok">{okMsg}</Banner>}
 
-      <div className="dash-grid" style={{ gridTemplateColumns: '1.3fr 1fr' }}>
-        <motion.div className="card" {...fadeUp}>
-          <div className="field">
-            <label>Post type</label>
-            <div className="tabs-inline" style={{ display: 'flex', width: '100%' }}>
+      <div className="grid gap-5 items-start grid-cols-[1.3fr_1fr] max-[1100px]:grid-cols-1">
+        <motion.div className={card} {...fadeUp}>
+          <div className={field}>
+            <label className={label}>Post type</label>
+            <div className="inline-flex w-full gap-1 p-1 bg-surface-2 border border-border rounded-btn">
               <button
                 type="button"
-                className={`tab-inline grow ${mediaType === 'IMAGE' ? 'active' : ''}`}
+                className={cx(
+                  tabInline,
+                  mediaType === 'IMAGE'
+                    ? 'bg-surface text-text shadow-xs'
+                    : 'text-muted',
+                )}
                 onClick={() => setMediaType('IMAGE')}
               >
-                <span className="flex" style={{ justifyContent: 'center', gap: 6 }}>
+                <span className="flex items-center justify-center gap-1.5">
                   <ImageIcon size={15} /> Image
                 </span>
               </button>
               <button
                 type="button"
-                className={`tab-inline grow ${mediaType === 'REELS' ? 'active' : ''}`}
+                className={cx(
+                  tabInline,
+                  mediaType === 'REELS'
+                    ? 'bg-surface text-text shadow-xs'
+                    : 'text-muted',
+                )}
                 onClick={() => setMediaType('REELS')}
               >
-                <span className="flex" style={{ justifyContent: 'center', gap: 6 }}>
+                <span className="flex items-center justify-center gap-1.5">
                   <Film size={15} /> Reel
                 </span>
               </button>
             </div>
           </div>
 
-          <div className="field">
-            <label>
+          <div className={field}>
+            <label className={label}>
               {mediaType === 'REELS'
                 ? 'Public video URL (.mp4)'
                 : 'Public image URL (.jpg / .png)'}
             </label>
             <input
               type="url"
+              className={input}
               value={mediaUrl}
               placeholder="https://cdn.example.com/my-media.jpg"
               onChange={(e) => setMediaUrl(e.target.value)}
             />
           </div>
 
-          <div className="field">
-            <label>Caption (optional)</label>
+          <div className={field}>
+            <label className={label}>Caption (optional)</label>
             <textarea
+              className={cx(textarea, 'min-h-[120px]')}
               value={caption}
               placeholder="Write a caption… Comment 'Interested' and I'll DM you the details!"
               onChange={(e) => setCaption(e.target.value)}
-              style={{ minHeight: 120 }}
             />
-            <div className="hint">
+            <div className={hint}>
               Tip: mention a keyword so InstaPilot knows when to auto-reply.
             </div>
           </div>
 
           <button
-            className="btn premium block"
+            className={cx(btn.premium, 'w-full')}
             onClick={publish}
             disabled={busy || !isValidUrl}
           >
@@ -133,43 +158,42 @@ export function CreatePost() {
         </motion.div>
 
         {/* Live-ish preview */}
-        <motion.div
-          className="card"
-          {...fadeUp}
-          style={{ position: 'sticky', top: 88 }}
-        >
-          <div className="panel-head">
-            <h3>Preview</h3>
-            <span className="badge kw">
+        <motion.div className={cx(card, 'sticky top-[88px]')} {...fadeUp}>
+          <div className={panelHead}>
+            <h3 className={cx(heading, 'text-base')}>Preview</h3>
+            <span className={badge.kw}>
               <Sparkles size={12} /> {mediaType === 'REELS' ? 'Reel' : 'Image'}
             </span>
           </div>
-          <div
-            className="post-thumb-wrap"
-            style={{ borderRadius: 12, border: '1px solid var(--border)' }}
-          >
+          <div className="relative w-full aspect-square bg-surface-2 overflow-hidden rounded-xl border border-border">
             {isValidUrl ? (
               mediaType === 'REELS' ? (
                 <video
                   src={mediaUrl}
-                  className="post-thumb"
+                  className="w-full h-full object-cover block"
                   muted
                   playsInline
                   controls
                 />
               ) : (
-                <img className="post-thumb" src={mediaUrl} alt="preview" />
+                <img
+                  className="w-full h-full object-cover block"
+                  src={mediaUrl}
+                  alt="preview"
+                />
               )
             ) : (
-              <div className="post-thumb placeholder">
+              <div className="flex flex-col items-center justify-center gap-1.5 text-faint text-xs h-full">
                 <Info size={26} />
                 Paste a public URL to preview
               </div>
             )}
           </div>
-          <div style={{ marginTop: 14 }}>
-            <div className="post-caption" style={{ WebkitLineClamp: 4 }}>
-              {caption || <span className="faint">Your caption appears here…</span>}
+          <div className="mt-3.5">
+            <div className="text-[13.5px] text-text leading-[1.45] line-clamp-4">
+              {caption || (
+                <span className="text-faint">Your caption appears here…</span>
+              )}
             </div>
           </div>
         </motion.div>

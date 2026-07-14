@@ -15,6 +15,21 @@ import {
 import { api } from '../api';
 import type { AutomationStatus, CredentialsInput, User } from '../types';
 import { Banner, EmptyState, LoadingBlock, stagger, useToast } from './ui';
+import {
+  avatar,
+  avatarFallback,
+  badge,
+  btn,
+  btnSm,
+  card,
+  cx,
+  field,
+  heading,
+  hint,
+  input,
+  label,
+  sectionHead,
+} from '../tw';
 
 const EMPTY_CREDS: CredentialsInput = {
   appId: '',
@@ -29,12 +44,12 @@ const EMPTY_CREDS: CredentialsInput = {
 
 function StatusBadge({ status }: { status: AutomationStatus }) {
   const map: Record<AutomationStatus, string> = {
-    none: '',
-    pending: 'kw',
-    approved: 'on',
-    rejected: 'off',
+    none: badge.default,
+    pending: badge.kw,
+    approved: badge.on,
+    rejected: badge.off,
   };
-  return <span className={`badge ${map[status]}`}>{status}</span>;
+  return <span className={map[status]}>{status}</span>;
 }
 
 function initials(name: string): string {
@@ -119,20 +134,17 @@ function CredentialsForm({
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.22 }}
-      style={{
-        marginTop: 18,
-        borderTop: '1px solid var(--border)',
-        paddingTop: 18,
-        overflow: 'hidden',
-      }}
+      className="border-t border-border pt-[18px] mt-[18px] overflow-hidden"
     >
-      <div className="hint" style={{ marginBottom: 14 }}>
+      <div className={cx(hint, 'mb-3.5 mt-0')}>
         {user.credentials.configured ? (
           <>
             Credentials configured (source: <b>{user.credentials.source}</b>, IG
             account{' '}
-            <code className="inline">{user.credentials.businessAccountId}</code>).
-            Fill the form to replace them — secrets are never shown back.
+            <code className="bg-surface-2 border border-border text-accent px-1.5 py-px rounded-md text-xs font-mono">
+              {user.credentials.businessAccountId}
+            </code>
+            ). Fill the form to replace them — secrets are never shown back.
           </>
         ) : (
           <>No Instagram credentials set for this user yet.</>
@@ -142,12 +154,13 @@ function CredentialsForm({
       {error && <Banner kind="error">{error}</Banner>}
       {ok && <Banner kind="ok">{ok}</Banner>}
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div className="grid grid-cols-2 gap-3.5 max-[620px]:grid-cols-1">
         {fields.map((f) => (
-          <div className="field" key={f.key} style={{ marginBottom: 0 }}>
-            <label>{f.label}</label>
+          <div className={cx(field, 'mb-0')} key={f.key}>
+            <label className={label}>{f.label}</label>
             <input
               type="text"
+              className={input}
               value={form[f.key] ?? ''}
               placeholder={f.ph}
               onChange={(e) => set(f.key, e.target.value)}
@@ -156,12 +169,12 @@ function CredentialsForm({
         ))}
       </div>
 
-      <div className="flex" style={{ gap: 10, marginTop: 16 }}>
-        <button className="btn" onClick={save} disabled={busy}>
+      <div className="flex items-center gap-2.5 mt-4">
+        <button className={btn.primary} onClick={save} disabled={busy}>
           {busy ? 'Saving…' : 'Save credentials'}
         </button>
         {user.credentials.configured && (
-          <button className="btn danger" onClick={clear} disabled={busy}>
+          <button className={btn.danger} onClick={clear} disabled={busy}>
             <Trash2 size={15} /> Remove
           </button>
         )}
@@ -213,12 +226,14 @@ export function UsersAdmin() {
 
   return (
     <div>
-      <div className="section-head">
-        <div className="titles">
-          <h2>Users &amp; access</h2>
-          <div className="sub">Approve requests and manage Instagram credentials.</div>
+      <div className={sectionHead}>
+        <div>
+          <h2 className={cx(heading, 'text-2xl')}>Users &amp; access</h2>
+          <div className="text-muted text-sm mt-1">
+            Approve requests and manage Instagram credentials.
+          </div>
         </div>
-        <button className="btn secondary" onClick={load}>
+        <button className={btn.secondary} onClick={load}>
           <RefreshCw size={16} /> Refresh
         </button>
       </div>
@@ -226,20 +241,20 @@ export function UsersAdmin() {
       {error && <Banner kind="error">{error}</Banner>}
 
       {users.length === 0 ? (
-        <div className="card">
+        <div className={card}>
           <EmptyState icon={UsersIcon} title="No users yet">
             Nobody has signed up yet. New sign-ups will appear here for approval.
           </EmptyState>
         </div>
       ) : (
-        <div className="stack">
+        <div className="flex flex-col gap-4">
           {users.map((u, i) => (
-            <motion.div className="card" key={u.id} {...stagger(i)}>
-              <div className="flex between flex-wrap" style={{ gap: 12 }}>
-                <div className="flex" style={{ gap: 14 }}>
+            <motion.div className={card} key={u.id} {...stagger(i)}>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3.5">
                   {u.picture ? (
                     <img
-                      className="avatar"
+                      className={avatar}
                       src={u.picture}
                       alt=""
                       style={{ width: 44, height: 44 }}
@@ -247,29 +262,27 @@ export function UsersAdmin() {
                     />
                   ) : (
                     <span
-                      className="avatar fallback"
+                      className={cx(avatarFallback, 'text-sm')}
                       style={{ width: 44, height: 44 }}
                     >
                       {initials(u.name)}
                     </span>
                   )}
                   <div>
-                    <div className="flex" style={{ gap: 8 }}>
-                      <span style={{ fontWeight: 600 }}>{u.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{u.name}</span>
                       {u.role === 'admin' && (
-                        <span className="badge kw">admin</span>
+                        <span className={badge.kw}>admin</span>
                       )}
                     </div>
-                    <div className="muted" style={{ fontSize: 13 }}>
-                      {u.email}
-                    </div>
+                    <div className="text-[13px] text-muted">{u.email}</div>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap" style={{ gap: 8 }}>
+                <div className="flex items-center gap-2 flex-wrap">
                   <StatusBadge status={u.status} />
                   {u.credentials.configured && (
-                    <span className="badge on">
+                    <span className={badge.on}>
                       <KeyRound size={12} /> creds
                     </span>
                   )}
@@ -277,15 +290,13 @@ export function UsersAdmin() {
               </div>
 
               {u.requestNote && (
-                <div className="hint" style={{ marginTop: 12 }}>
-                  Note: {u.requestNote}
-                </div>
+                <div className={cx(hint, 'mt-3')}>Note: {u.requestNote}</div>
               )}
 
-              <div className="flex flex-wrap" style={{ gap: 8, marginTop: 16 }}>
+              <div className="flex items-center gap-2 flex-wrap mt-4">
                 {u.status !== 'approved' && (
                   <button
-                    className="btn sm"
+                    className={cx(btn.primary, btnSm)}
                     onClick={() => act(() => api.setUserStatus(u.id, 'approved'))}
                   >
                     <Check size={15} /> Approve
@@ -293,7 +304,7 @@ export function UsersAdmin() {
                 )}
                 {u.status !== 'rejected' && (
                   <button
-                    className="btn secondary sm"
+                    className={cx(btn.secondary, btnSm)}
                     onClick={() => act(() => api.setUserStatus(u.id, 'rejected'))}
                   >
                     <X size={15} /> Reject
@@ -301,31 +312,31 @@ export function UsersAdmin() {
                 )}
                 {u.role === 'user' ? (
                   <button
-                    className="btn secondary sm"
+                    className={cx(btn.secondary, btnSm)}
                     onClick={() => act(() => api.setUserRole(u.id, 'admin'))}
                   >
                     <Shield size={15} /> Make admin
                   </button>
                 ) : (
                   <button
-                    className="btn secondary sm"
+                    className={cx(btn.secondary, btnSm)}
                     onClick={() => act(() => api.setUserRole(u.id, 'user'))}
                   >
                     <ShieldOff size={15} /> Revoke admin
                   </button>
                 )}
                 <button
-                  className="btn ghost sm"
+                  className={cx(btn.ghost, btnSm)}
                   onClick={() => setExpanded(expanded === u.id ? null : u.id)}
                 >
                   <UserCheck size={15} />
                   {expanded === u.id ? 'Hide credentials' : 'Set credentials'}
                   <ChevronDown
                     size={15}
-                    style={{
-                      transform: expanded === u.id ? 'rotate(180deg)' : 'none',
-                      transition: 'transform 0.2s ease',
-                    }}
+                    className={cx(
+                      'transition-transform duration-200',
+                      expanded === u.id && 'rotate-180',
+                    )}
                   />
                 </button>
               </div>

@@ -15,16 +15,29 @@ import { api } from '../api';
 import type { MediaItem, ReelConfig } from '../types';
 import { PostConfigModal } from './PostConfigModal';
 import { Banner, EmptyState, stagger } from './ui';
+import {
+  badge,
+  btn,
+  btnIconSm,
+  btnSm,
+  card,
+  cardHover,
+  cx,
+  heading,
+  sectionHead,
+} from '../tw';
+
+const GRID = 'grid gap-5 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]';
 
 function PostSkeleton() {
   return (
-    <div className="card post-card">
-      <div className="skeleton" style={{ aspectRatio: '1 / 1', borderRadius: 0 }} />
-      <div className="post-body">
-        <div className="skeleton" style={{ height: 14, width: '90%' }} />
-        <div className="skeleton" style={{ height: 14, width: '60%' }} />
-        <div className="skeleton" style={{ height: 24, width: '50%', borderRadius: 999 }} />
-        <div className="skeleton" style={{ height: 36, borderRadius: 10, marginTop: 6 }} />
+    <div className={cx(card, 'p-0 overflow-hidden flex flex-col')}>
+      <span className="block aspect-square bg-[linear-gradient(90deg,var(--color-surface-2)_25%,#ececef_50%,var(--color-surface-2)_75%)] bg-size-[200%_100%] animate-shimmer" />
+      <div className="p-4 flex flex-col gap-3">
+        <span className="block h-3.5 w-[90%] rounded-lg bg-surface-2 animate-pulse" />
+        <span className="block h-3.5 w-3/5 rounded-lg bg-surface-2 animate-pulse" />
+        <span className="block h-6 w-1/2 rounded-pill bg-surface-2 animate-pulse" />
+        <span className="block h-9 rounded-[10px] bg-surface-2 animate-pulse mt-1.5" />
       </div>
     </div>
   );
@@ -66,15 +79,15 @@ export function PostsList() {
 
   return (
     <div>
-      <div className="section-head">
-        <div className="titles">
-          <h2>Your posts &amp; reels</h2>
-          <div className="sub">
+      <div className={sectionHead}>
+        <div>
+          <h2 className={cx(heading, 'text-2xl')}>Your posts &amp; reels</h2>
+          <div className="text-muted text-sm mt-1">
             Configure automated comment replies and DMs for each post.
           </div>
         </div>
-        <button className="btn secondary" onClick={load} disabled={loading}>
-          <RefreshCw size={16} className={loading ? 'spin' : ''} />
+        <button className={btn.secondary} onClick={load} disabled={loading}>
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
@@ -82,7 +95,7 @@ export function PostsList() {
       {error && <Banner kind="error">{error}</Banner>}
 
       {loading && !error && (
-        <div className="grid">
+        <div className={GRID}>
           {[0, 1, 2, 3].map((i) => (
             <PostSkeleton key={i} />
           ))}
@@ -97,7 +110,7 @@ export function PostsList() {
       )}
 
       {!loading && !error && items.length > 0 && (
-        <div className="grid">
+        <div className={GRID}>
           {items.map((m, i) => {
             const cfg = m.config;
             const configured = !!cfg;
@@ -106,56 +119,59 @@ export function PostsList() {
             return (
               <motion.div
                 key={m.id}
-                className="card hover post-card"
+                className={cx(card, cardHover, 'group p-0 overflow-hidden flex flex-col')}
                 {...stagger(i)}
               >
-                <div className="post-thumb-wrap">
+                <div className="relative w-full aspect-square bg-surface-2 overflow-hidden">
                   {thumb ? (
-                    <img className="post-thumb" src={thumb} alt="" loading="lazy" />
+                    <img
+                      className="w-full h-full object-cover block transition-transform duration-350 group-hover:scale-105"
+                      src={thumb}
+                      alt=""
+                      loading="lazy"
+                    />
                   ) : (
-                    <div className="post-thumb placeholder">
+                    <div className="flex flex-col items-center justify-center gap-1.5 text-faint text-xs h-full">
                       <ImageOff size={28} />
                       no preview
                     </div>
                   )}
-                  <span className="post-type-chip">
+                  <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-text rounded-pill px-2.5 py-1 bg-white/90 backdrop-blur-[6px] shadow-xs">
                     {m.media_product_type || m.media_type || 'POST'}
                   </span>
                 </div>
-                <div className="post-body">
-                  <div className="post-caption">
-                    {m.caption || <span className="faint">(no caption)</span>}
+                <div className="p-4 flex flex-col gap-3 flex-1">
+                  <div className="text-[13.5px] text-text leading-[1.45] min-h-[38px] line-clamp-2">
+                    {m.caption || <span className="text-faint">(no caption)</span>}
                   </div>
-                  <div className="post-meta">
+                  <div className="flex gap-3.5 text-muted text-[12.5px]">
                     {typeof m.comments_count === 'number' && (
-                      <span>
+                      <span className="inline-flex items-center gap-1">
                         <MessageCircle size={14} /> {m.comments_count}
                       </span>
                     )}
                     {typeof m.like_count === 'number' && (
-                      <span>
+                      <span className="inline-flex items-center gap-1">
                         <Heart size={14} /> {m.like_count}
                       </span>
                     )}
                   </div>
-                  <div className="badges">
-                    {!configured && (
-                      <span className="badge">Not configured</span>
-                    )}
+                  <div className="flex gap-1.5 flex-wrap">
+                    {!configured && <span className={badge.default}>Not configured</span>}
                     {configured && (
-                      <span className={`badge ${on ? 'on' : 'off'}`}>
+                      <span className={on ? badge.on : badge.off}>
                         {on ? 'Auto-reply ON' : 'Auto-reply OFF'}
                       </span>
                     )}
                     {cfg && cfg.triggerKeywords.length > 0 && (
-                      <span className="badge kw">
+                      <span className={badge.kw}>
                         <KeyRound size={12} /> {cfg.triggerKeywords.join(', ')}
                       </span>
                     )}
                   </div>
-                  <div className="flex mt-auto" style={{ gap: 8, paddingTop: 4 }}>
+                  <div className="flex items-center gap-2 mt-auto pt-1">
                     <button
-                      className={`btn sm grow ${configured ? '' : 'premium'}`}
+                      className={cx(configured ? btn.primary : btn.premium, btnSm, 'flex-1')}
                       onClick={() => setEditing(m)}
                     >
                       {configured ? (
@@ -170,7 +186,7 @@ export function PostsList() {
                     </button>
                     {m.permalink && (
                       <a
-                        className="btn secondary sm icon"
+                        className={cx(btn.secondary, btnSm, btnIconSm)}
                         href={m.permalink}
                         target="_blank"
                         rel="noreferrer"
