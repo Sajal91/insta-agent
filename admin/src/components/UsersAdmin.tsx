@@ -1,6 +1,20 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Check,
+  ChevronDown,
+  KeyRound,
+  RefreshCw,
+  Shield,
+  ShieldOff,
+  Trash2,
+  UserCheck,
+  Users as UsersIcon,
+  X,
+} from 'lucide-react';
 import { api } from '../api';
 import type { AutomationStatus, CredentialsInput, User } from '../types';
+import { Banner, EmptyState, LoadingBlock, stagger, useToast } from './ui';
 
 const EMPTY_CREDS: CredentialsInput = {
   appId: '',
@@ -15,12 +29,24 @@ const EMPTY_CREDS: CredentialsInput = {
 
 function StatusBadge({ status }: { status: AutomationStatus }) {
   const map: Record<AutomationStatus, string> = {
-    none: 'off',
+    none: '',
     pending: 'kw',
     approved: 'on',
     rejected: 'off',
   };
   return <span className={`badge ${map[status]}`}>{status}</span>;
+}
+
+function initials(name: string): string {
+  return (
+    name
+      .split(' ')
+      .map((p) => p[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || 'U'
+  );
 }
 
 function CredentialsForm({
@@ -34,6 +60,7 @@ function CredentialsForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const toast = useToast();
 
   function set<K extends keyof CredentialsInput>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -46,9 +73,12 @@ function CredentialsForm({
     try {
       const { user: updated } = await api.setUserCredentials(user.id, form);
       setOk('Credentials saved.');
+      toast.push('ok', 'Credentials saved');
       onSaved(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save credentials');
+      const msg = e instanceof Error ? e.message : 'Failed to save credentials';
+      setError(msg);
+      toast.push('error', msg);
     } finally {
       setBusy(false);
     }
@@ -61,9 +91,12 @@ function CredentialsForm({
     try {
       const { user: updated } = await api.clearUserCredentials(user.id);
       setOk('Credentials removed.');
+      toast.push('info', 'Credentials removed');
       onSaved(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to remove credentials');
+      const msg = e instanceof Error ? e.message : 'Failed to remove credentials';
+      setError(msg);
+      toast.push('error', msg);
     } finally {
       setBusy(false);
     }
@@ -81,12 +114,24 @@ function CredentialsForm({
   ];
 
   return (
-    <div style={{ marginTop: 12, borderTop: '1px solid var(--border, #333)', paddingTop: 12 }}>
-      <div className="hint" style={{ marginBottom: 10 }}>
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.22 }}
+      style={{
+        marginTop: 18,
+        borderTop: '1px solid var(--border)',
+        paddingTop: 18,
+        overflow: 'hidden',
+      }}
+    >
+      <div className="hint" style={{ marginBottom: 14 }}>
         {user.credentials.configured ? (
           <>
             Credentials configured (source: <b>{user.credentials.source}</b>, IG
-            account <code className="inline">{user.credentials.businessAccountId}</code>).
+            account{' '}
+            <code className="inline">{user.credentials.businessAccountId}</code>).
             Fill the form to replace them — secrets are never shown back.
           </>
         ) : (
@@ -94,12 +139,12 @@ function CredentialsForm({
         )}
       </div>
 
-      {error && <div className="banner error">{error}</div>}
-      {ok && <div className="banner ok">{ok}</div>}
+      {error && <Banner kind="error">{error}</Banner>}
+      {ok && <Banner kind="ok">{ok}</Banner>}
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         {fields.map((f) => (
-          <div className="field" key={f.key}>
+          <div className="field" key={f.key} style={{ marginBottom: 0 }}>
             <label>{f.label}</label>
             <input
               type="text"
@@ -111,17 +156,17 @@ function CredentialsForm({
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+      <div className="flex" style={{ gap: 10, marginTop: 16 }}>
         <button className="btn" onClick={save} disabled={busy}>
           {busy ? 'Saving…' : 'Save credentials'}
         </button>
         {user.credentials.configured && (
           <button className="btn danger" onClick={clear} disabled={busy}>
-            Remove
+            <Trash2 size={15} /> Remove
           </button>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -130,6 +175,7 @@ export function UsersAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const toast = useToast();
 
   async function load() {
     setLoading(true);
@@ -157,121 +203,140 @@ export function UsersAdmin() {
       const { user } = await fn();
       replaceUser(user);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Action failed');
+      const msg = e instanceof Error ? e.message : 'Action failed';
+      setError(msg);
+      toast.push('error', msg);
     }
   }
 
-  if (loading) return <div className="empty">Loading users…</div>;
+  if (loading) return <LoadingBlock label="Loading users…" />;
 
   return (
     <div>
       <div className="section-head">
-        <h2>Users &amp; access requests</h2>
-        <button className="btn secondary sm" onClick={load}>
-          Refresh
+        <div className="titles">
+          <h2>Users &amp; access</h2>
+          <div className="sub">Approve requests and manage Instagram credentials.</div>
+        </div>
+        <button className="btn secondary" onClick={load}>
+          <RefreshCw size={16} /> Refresh
         </button>
       </div>
 
-      {error && <div className="banner error">{error}</div>}
+      {error && <Banner kind="error">{error}</Banner>}
 
-      {users.length === 0 && (
-        <div className="empty">No users have signed up yet.</div>
-      )}
+      {users.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={UsersIcon} title="No users yet">
+            Nobody has signed up yet. New sign-ups will appear here for approval.
+          </EmptyState>
+        </div>
+      ) : (
+        <div className="stack">
+          {users.map((u, i) => (
+            <motion.div className="card" key={u.id} {...stagger(i)}>
+              <div className="flex between flex-wrap" style={{ gap: 12 }}>
+                <div className="flex" style={{ gap: 14 }}>
+                  {u.picture ? (
+                    <img
+                      className="avatar"
+                      src={u.picture}
+                      alt=""
+                      style={{ width: 44, height: 44 }}
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span
+                      className="avatar fallback"
+                      style={{ width: 44, height: 44 }}
+                    >
+                      {initials(u.name)}
+                    </span>
+                  )}
+                  <div>
+                    <div className="flex" style={{ gap: 8 }}>
+                      <span style={{ fontWeight: 600 }}>{u.name}</span>
+                      {u.role === 'admin' && (
+                        <span className="badge kw">admin</span>
+                      )}
+                    </div>
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      {u.email}
+                    </div>
+                  </div>
+                </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {users.map((u) => (
-          <div className="card" key={u.id}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 12,
-                flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {u.picture && (
-                  <img
-                    src={u.picture}
-                    alt=""
-                    width={36}
-                    height={36}
-                    style={{ borderRadius: '50%' }}
-                    referrerPolicy="no-referrer"
-                  />
-                )}
-                <div>
-                  <div style={{ fontWeight: 600 }}>
-                    {u.name}{' '}
-                    {u.role === 'admin' && <span className="badge on">admin</span>}
-                  </div>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    {u.email}
-                  </div>
+                <div className="flex flex-wrap" style={{ gap: 8 }}>
+                  <StatusBadge status={u.status} />
+                  {u.credentials.configured && (
+                    <span className="badge on">
+                      <KeyRound size={12} /> creds
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <StatusBadge status={u.status} />
-                {u.credentials.configured && (
-                  <span className="badge kw">creds ✓</span>
+              {u.requestNote && (
+                <div className="hint" style={{ marginTop: 12 }}>
+                  Note: {u.requestNote}
+                </div>
+              )}
+
+              <div className="flex flex-wrap" style={{ gap: 8, marginTop: 16 }}>
+                {u.status !== 'approved' && (
+                  <button
+                    className="btn sm"
+                    onClick={() => act(() => api.setUserStatus(u.id, 'approved'))}
+                  >
+                    <Check size={15} /> Approve
+                  </button>
                 )}
+                {u.status !== 'rejected' && (
+                  <button
+                    className="btn secondary sm"
+                    onClick={() => act(() => api.setUserStatus(u.id, 'rejected'))}
+                  >
+                    <X size={15} /> Reject
+                  </button>
+                )}
+                {u.role === 'user' ? (
+                  <button
+                    className="btn secondary sm"
+                    onClick={() => act(() => api.setUserRole(u.id, 'admin'))}
+                  >
+                    <Shield size={15} /> Make admin
+                  </button>
+                ) : (
+                  <button
+                    className="btn secondary sm"
+                    onClick={() => act(() => api.setUserRole(u.id, 'user'))}
+                  >
+                    <ShieldOff size={15} /> Revoke admin
+                  </button>
+                )}
+                <button
+                  className="btn ghost sm"
+                  onClick={() => setExpanded(expanded === u.id ? null : u.id)}
+                >
+                  <UserCheck size={15} />
+                  {expanded === u.id ? 'Hide credentials' : 'Set credentials'}
+                  <ChevronDown
+                    size={15}
+                    style={{
+                      transform: expanded === u.id ? 'rotate(180deg)' : 'none',
+                      transition: 'transform 0.2s ease',
+                    }}
+                  />
+                </button>
               </div>
-            </div>
 
-            {u.requestNote && (
-              <div className="hint" style={{ marginTop: 10 }}>
-                Note: {u.requestNote}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              {u.status !== 'approved' && (
-                <button
-                  className="btn sm"
-                  onClick={() => act(() => api.setUserStatus(u.id, 'approved'))}
-                >
-                  Approve
-                </button>
+              {expanded === u.id && (
+                <CredentialsForm user={u} onSaved={replaceUser} />
               )}
-              {u.status !== 'rejected' && (
-                <button
-                  className="btn secondary sm"
-                  onClick={() => act(() => api.setUserStatus(u.id, 'rejected'))}
-                >
-                  Reject
-                </button>
-              )}
-              {u.role === 'user' ? (
-                <button
-                  className="btn secondary sm"
-                  onClick={() => act(() => api.setUserRole(u.id, 'admin'))}
-                >
-                  Make admin
-                </button>
-              ) : (
-                <button
-                  className="btn secondary sm"
-                  onClick={() => act(() => api.setUserRole(u.id, 'user'))}
-                >
-                  Revoke admin
-                </button>
-              )}
-              <button
-                className="btn secondary sm"
-                onClick={() => setExpanded(expanded === u.id ? null : u.id)}
-              >
-                {expanded === u.id ? 'Hide credentials' : 'Set credentials'}
-              </button>
-            </div>
-
-            {expanded === u.id && (
-              <CredentialsForm user={u} onSaved={replaceUser} />
-            )}
-          </div>
-        ))}
-      </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

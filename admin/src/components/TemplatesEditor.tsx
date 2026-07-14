@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { KeyRound, MessageSquareText, Save, Send } from 'lucide-react';
 import { api } from '../api';
+import { Banner, LoadingBlock, fadeUp, useToast } from './ui';
 
 export function TemplatesEditor() {
   const [dm, setDm] = useState('');
@@ -10,6 +13,7 @@ export function TemplatesEditor() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   async function load() {
     setLoading(true);
@@ -43,37 +47,63 @@ export function TemplatesEditor() {
         DEFAULT_TRIGGER_KEYWORDS: keywords,
       });
       setOkMsg('Saved.');
+      toast.push('ok', 'Templates saved');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      const msg = e instanceof Error ? e.message : 'Failed to save';
+      setError(msg);
+      toast.push('error', msg);
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) return <div className="empty">Loading templates…</div>;
+  if (loading) return <LoadingBlock label="Loading templates…" />;
 
   return (
     <div>
       <div className="section-head">
-        <h2>Default templates</h2>
+        <div className="titles">
+          <h2>Default templates</h2>
+          <div className="sub">
+            Account fallbacks, used whenever a post has no override.
+          </div>
+        </div>
+        <button className="btn" onClick={save} disabled={saving}>
+          {saving ? (
+            'Saving…'
+          ) : (
+            <>
+              <Save size={16} /> Save templates
+            </>
+          )}
+        </button>
       </div>
-      <div className="hint" style={{ marginBottom: 16 }}>
-        Your account's fallbacks, used when a post has no override. Placeholders:{' '}
+
+      <Banner kind="info">
+        Placeholders you can use:{' '}
         <code className="inline">{'{{detailedMessageContent}}'}</code>,{' '}
         <code className="inline">{'{{pageHandle}}'}</code>,{' '}
         <code className="inline">{'{{username}}'}</code>.
-      </div>
+      </Banner>
 
-      {error && <div className="banner error">{error}</div>}
-      {okMsg && <div className="banner ok">{okMsg}</div>}
+      {error && <Banner kind="error">{error}</Banner>}
+      {okMsg && <Banner kind="ok">{okMsg}</Banner>}
 
-      <div className="card" style={{ maxWidth: 680 }}>
+      <motion.div className="card" style={{ maxWidth: 760 }} {...fadeUp}>
         <div className="field">
-          <label>DM template</label>
+          <label>
+            <span className="flex" style={{ gap: 7 }}>
+              <Send size={15} /> DM template
+            </span>
+          </label>
           <textarea value={dm} onChange={(e) => setDm(e.target.value)} />
         </div>
         <div className="field">
-          <label>Public comment reply</label>
+          <label>
+            <span className="flex" style={{ gap: 7 }}>
+              <MessageSquareText size={15} /> Public comment reply
+            </span>
+          </label>
           <textarea value={reply} onChange={(e) => setReply(e.target.value)} />
         </div>
         <div className="field">
@@ -83,8 +113,12 @@ export function TemplatesEditor() {
             onChange={(e) => setDetailed(e.target.value)}
           />
         </div>
-        <div className="field">
-          <label>Default accepted keywords (comma-separated, case-insensitive)</label>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>
+            <span className="flex" style={{ gap: 7 }}>
+              <KeyRound size={15} /> Default accepted keywords
+            </span>
+          </label>
           <input
             type="text"
             value={keywords}
@@ -92,14 +126,11 @@ export function TemplatesEditor() {
             onChange={(e) => setKeywords(e.target.value)}
           />
           <div className="hint">
-            Applied to posts that don’t define their own keywords. Empty = reply to
-            all comments.
+            Comma-separated, case-insensitive. Applied to posts that don't define
+            their own keywords. Empty = reply to all comments.
           </div>
         </div>
-        <button className="btn" onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : 'Save templates'}
-        </button>
-      </div>
+      </motion.div>
     </div>
   );
 }

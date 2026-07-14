@@ -1,6 +1,9 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Clock, Send, Sparkles, XCircle } from 'lucide-react';
 import { api } from '../api';
 import type { User } from '../types';
+import { Banner, fadeUp } from './ui';
 
 /**
  * The landing view for a regular (non-admin) user. It reflects where they are in
@@ -21,7 +24,9 @@ export function RequestAutomation({
     setBusy(true);
     setError(null);
     try {
-      const { user: updated } = await api.requestAutomation(note.trim() || undefined);
+      const { user: updated } = await api.requestAutomation(
+        note.trim() || undefined,
+      );
       onUpdated(updated);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit request');
@@ -32,55 +37,64 @@ export function RequestAutomation({
 
   if (user.status === 'pending') {
     return (
-      <div className="card" style={{ maxWidth: 620 }}>
-        <h2>Request received ⏳</h2>
+      <motion.div className="card" style={{ maxWidth: 620 }} {...fadeUp}>
+        <span className="stat-icon amber" style={{ marginBottom: 16 }}>
+          <Clock size={22} />
+        </span>
+        <h2 style={{ fontSize: 22 }}>Request received</h2>
         <div className="hint" style={{ marginTop: 8 }}>
           Your request to use the Instagram automation is pending admin approval.
           You'll get access here once an admin approves you and configures your
           Instagram credentials.
         </div>
         {user.requestedAt && (
-          <div className="muted" style={{ marginTop: 12, fontSize: 13 }}>
+          <div className="badge" style={{ marginTop: 16 }}>
             Requested {new Date(user.requestedAt).toLocaleString()}
           </div>
         )}
-      </div>
+      </motion.div>
     );
   }
 
   if (user.status === 'rejected') {
     return (
-      <div className="card" style={{ maxWidth: 620 }}>
-        <h2>Request not approved</h2>
+      <motion.div className="card" style={{ maxWidth: 620 }} {...fadeUp}>
+        <span className="stat-icon" style={{ background: 'var(--red-soft)', color: 'var(--red)', marginBottom: 16 }}>
+          <XCircle size={22} />
+        </span>
+        <h2 style={{ fontSize: 22 }}>Request not approved</h2>
         <div className="hint" style={{ marginTop: 8 }}>
           Your previous request wasn't approved. You can submit a new request
           below if you think this was a mistake.
         </div>
-        {error && <div className="banner error" style={{ marginTop: 12 }}>{error}</div>}
+        {error && <Banner kind="error">{error}</Banner>}
         <div className="field" style={{ marginTop: 16 }}>
           <label>Message to the admin (optional)</label>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
         <button className="btn" onClick={submit} disabled={busy}>
-          {busy ? 'Submitting…' : 'Request again'}
+          {busy ? 'Submitting…' : (<><Send size={16} /> Request again</>)}
         </button>
-      </div>
+      </motion.div>
     );
   }
 
   // status === 'none'
   return (
-    <div className="card" style={{ maxWidth: 620 }}>
-      <h2>Request the Instagram automation</h2>
+    <motion.div className="card" style={{ maxWidth: 620 }} {...fadeUp}>
+      <span className="stat-icon ig" style={{ marginBottom: 16 }}>
+        <Sparkles size={22} />
+      </span>
+      <h2 style={{ fontSize: 22 }}>Request the Instagram automation</h2>
       <div className="hint" style={{ marginTop: 8 }}>
         Ask an admin to enable automated comment→DM replies for your Instagram
         Business account. Once approved and configured, you'll be able to set up
         auto-replies on your posts right here.
       </div>
 
-      {error && <div className="banner error" style={{ marginTop: 12 }}>{error}</div>}
+      {error && <Banner kind="error">{error}</Banner>}
 
-      <div className="field" style={{ marginTop: 16 }}>
+      <div className="field" style={{ marginTop: 18 }}>
         <label>Anything the admin should know? (optional)</label>
         <textarea
           value={note}
@@ -88,9 +102,9 @@ export function RequestAutomation({
           onChange={(e) => setNote(e.target.value)}
         />
       </div>
-      <button className="btn" onClick={submit} disabled={busy}>
-        {busy ? 'Submitting…' : 'Request access'}
+      <button className="btn premium" onClick={submit} disabled={busy}>
+        {busy ? 'Submitting…' : (<><Send size={16} /> Request access</>)}
       </button>
-    </div>
+    </motion.div>
   );
 }

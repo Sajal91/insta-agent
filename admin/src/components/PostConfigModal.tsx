@@ -1,6 +1,9 @@
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Link2, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import type { MediaItem, MessageLink, ReelConfig } from '../types';
+import { Banner, useToast } from './ui';
 
 const MAX_LINKS = 3;
 const MAX_LABEL = 20;
@@ -40,15 +43,14 @@ export function PostConfigModal({
   const [links, setLinks] = useState<MessageLink[]>(cfg?.links ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   function addLink() {
     if (links.length >= MAX_LINKS) return;
     setLinks((prev) => [...prev, { label: '', url: '' }]);
   }
   function updateLink(index: number, patch: Partial<MessageLink>) {
-    setLinks((prev) =>
-      prev.map((l, i) => (i === index ? { ...l, ...patch } : l)),
-    );
+    setLinks((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   }
   function removeLink(index: number) {
     setLinks((prev) => prev.filter((_, i) => i !== index));
@@ -71,9 +73,12 @@ export function PostConfigModal({
         commentReplyTemplate: replyTemplate.trim() || null,
         links: cleanedLinks,
       });
+      toast.push('ok', 'Auto-reply settings saved');
       onSaved(reel);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      const msg = e instanceof Error ? e.message : 'Failed to save';
+      setError(msg);
+      toast.push('error', msg);
     } finally {
       setSaving(false);
     }
@@ -84,6 +89,7 @@ export function PostConfigModal({
     setSaving(true);
     try {
       await api.deleteReelConfig(media.id);
+      toast.push('info', 'Auto-reply config removed');
       onSaved({
         reelId: media.id,
         enabled: true,
@@ -104,147 +110,180 @@ export function PostConfigModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Auto-reply settings</h3>
-        <div className="sub">
-          {media.media_product_type ?? media.media_type ?? 'POST'} · {media.id}
-        </div>
-
-        {error && <div className="banner error">{error}</div>}
-
-        <div className="field">
-          <label>Enabled</label>
-          <div
-            className="toggle"
-            onClick={() => setEnabled((v) => !v)}
-            role="switch"
-            aria-checked={enabled}
-          >
-            <div className={`switch ${enabled ? 'on' : ''}`} />
-            <span>{enabled ? 'Auto-reply on' : 'Auto-reply off'}</span>
-          </div>
-        </div>
-
-        <div className="field">
-          <label>Accepted keywords (comma-separated, case-insensitive)</label>
-          <input
-            type="text"
-            value={triggerKeywords}
-            placeholder="Interested, Required"
-            onChange={(e) => setTriggerKeywords(e.target.value)}
-          />
-          <div className="hint">
-            Only comments containing one of these trigger the DM. Leave empty to
-            reply to every comment.
-          </div>
-        </div>
-
-        <div className="field">
-          <label>Details to DM (link / info / offer)</label>
-          <textarea
-            value={detailed}
-            placeholder="https://your-link.com/offer"
-            onChange={(e) => setDetailed(e.target.value)}
-          />
-          <div className="hint">
-            Injected into the DM via <code className="inline">{'{{detailedMessageContent}}'}</code>. Falls
-            back to the global default if empty.
-          </div>
-        </div>
-
-        <div className="field">
-          <label>DM link buttons (up to {MAX_LINKS})</label>
-          <div className="hint" style={{ marginBottom: 10 }}>
-            Sent as tappable buttons in the DM. Each needs a short label (max{' '}
-            {MAX_LABEL} chars) and a URL. Leave empty to send a plain-text DM.
+    <AnimatePresence>
+      <motion.div
+        className="modal-overlay"
+        onClick={onClose}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.18 }}
+      >
+        <motion.div
+          className="modal"
+          onClick={(e) => e.stopPropagation()}
+          initial={{ opacity: 0, y: 24, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 16, scale: 0.98 }}
+          transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="modal-head">
+            <div>
+              <h3>Auto-reply settings</h3>
+              <div className="sub">
+                {media.media_product_type ?? media.media_type ?? 'POST'} ·{' '}
+                {media.id}
+              </div>
+            </div>
+            <button className="modal-close" onClick={onClose} aria-label="Close">
+              <X size={18} />
+            </button>
           </div>
 
-          {links.map((link, i) => (
-            <div className="link-row" key={i}>
-              <input
-                type="text"
-                value={link.label}
-                maxLength={MAX_LABEL}
-                placeholder="Click me"
-                onChange={(e) => updateLink(i, { label: e.target.value })}
-                style={{ flex: '0 0 140px' }}
-              />
-              <input
-                type="url"
-                value={link.url}
-                placeholder="https://your-link.com"
-                onChange={(e) => updateLink(i, { url: e.target.value })}
-              />
+          {error && <Banner kind="error">{error}</Banner>}
+
+          <div className="field">
+            <label>Automation</label>
+            <div
+              className="toggle"
+              onClick={() => setEnabled((v) => !v)}
+              role="switch"
+              aria-checked={enabled}
+            >
+              <div className={`switch ${enabled ? 'on' : ''}`} />
+              <span>{enabled ? 'Auto-reply on' : 'Auto-reply off'}</span>
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Accepted keywords (comma-separated, case-insensitive)</label>
+            <input
+              type="text"
+              value={triggerKeywords}
+              placeholder="Interested, Required"
+              onChange={(e) => setTriggerKeywords(e.target.value)}
+            />
+            <div className="hint">
+              Only comments containing one of these trigger the DM. Leave empty to
+              reply to every comment.
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Details to DM (link / info / offer)</label>
+            <textarea
+              value={detailed}
+              placeholder="https://your-link.com/offer"
+              onChange={(e) => setDetailed(e.target.value)}
+            />
+            <div className="hint">
+              Injected into the DM via{' '}
+              <code className="inline">{'{{detailedMessageContent}}'}</code>.
+              Falls back to the global default if empty.
+            </div>
+          </div>
+
+          <div className="field">
+            <label>DM link buttons (up to {MAX_LINKS})</label>
+            <div className="hint" style={{ marginBottom: 12, marginTop: 0 }}>
+              Sent as tappable buttons in the DM. Each needs a short label (max{' '}
+              {MAX_LABEL} chars) and a URL. Leave empty to send a plain-text DM.
+            </div>
+
+            {links.map((link, i) => (
+              <div className="link-row" key={i}>
+                <input
+                  type="text"
+                  value={link.label}
+                  maxLength={MAX_LABEL}
+                  placeholder="Click me"
+                  onChange={(e) => updateLink(i, { label: e.target.value })}
+                  style={{ flex: '0 0 150px' }}
+                />
+                <input
+                  type="url"
+                  value={link.url}
+                  placeholder="https://your-link.com"
+                  onChange={(e) => updateLink(i, { url: e.target.value })}
+                />
+                <button
+                  type="button"
+                  className="btn danger sm icon"
+                  onClick={() => removeLink(i)}
+                  title="Remove link"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+
+            {links.length < MAX_LINKS && (
               <button
                 type="button"
-                className="btn danger sm"
-                onClick={() => removeLink(i)}
-                title="Remove link"
+                className="btn secondary sm"
+                onClick={addLink}
+                style={{ marginTop: links.length > 0 ? 4 : 0 }}
               >
-                ✕
+                <Plus size={15} /> Add link button
+              </button>
+            )}
+          </div>
+
+          <div className="field">
+            <label>DM template (optional override)</label>
+            <textarea
+              value={dmTemplate}
+              placeholder="Thanks! Here are the details: {{detailedMessageContent}}"
+              onChange={(e) => setDmTemplate(e.target.value)}
+            />
+          </div>
+
+          <div className="field">
+            <label>Public comment reply (optional override)</label>
+            <textarea
+              value={replyTemplate}
+              placeholder="I've sent you the details in your DM 📩"
+              onChange={(e) => setReplyTemplate(e.target.value)}
+            />
+          </div>
+
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>
+              <span className="flex" style={{ gap: 7 }}>
+                <Link2 size={15} /> Blocklist keywords (skip these comments)
+              </span>
+            </label>
+            <input
+              type="text"
+              value={blocklist}
+              placeholder="spam, http"
+              onChange={(e) => setBlocklist(e.target.value)}
+            />
+          </div>
+
+          <div className="modal-actions">
+            <button
+              className="btn danger"
+              onClick={removeConfig}
+              disabled={saving || !cfg}
+            >
+              <Trash2 size={15} /> Remove config
+            </button>
+            <div className="flex" style={{ gap: 10 }}>
+              <button
+                className="btn secondary"
+                onClick={onClose}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button className="btn" onClick={save} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
-          ))}
-
-          {links.length < MAX_LINKS && (
-            <button
-              type="button"
-              className="btn secondary sm"
-              onClick={addLink}
-              style={{ marginTop: links.length > 0 ? 4 : 0 }}
-            >
-              + Add link button
-            </button>
-          )}
-        </div>
-
-        <div className="field">
-          <label>DM template (optional override)</label>
-          <textarea
-            value={dmTemplate}
-            placeholder="Thanks! Here are the details: {{detailedMessageContent}}"
-            onChange={(e) => setDmTemplate(e.target.value)}
-          />
-        </div>
-
-        <div className="field">
-          <label>Public comment reply (optional override)</label>
-          <textarea
-            value={replyTemplate}
-            placeholder="I've sent you the details in your DM 📩"
-            onChange={(e) => setReplyTemplate(e.target.value)}
-          />
-        </div>
-
-        <div className="field">
-          <label>Blocklist keywords (skip these comments)</label>
-          <input
-            type="text"
-            value={blocklist}
-            placeholder="spam, http"
-            onChange={(e) => setBlocklist(e.target.value)}
-          />
-        </div>
-
-        <div className="modal-actions">
-          <button
-            className="btn danger"
-            onClick={removeConfig}
-            disabled={saving || !cfg}
-          >
-            Remove config
-          </button>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn secondary" onClick={onClose} disabled={saving}>
-              Cancel
-            </button>
-            <button className="btn" onClick={save} disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
           </div>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }
