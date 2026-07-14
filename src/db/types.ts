@@ -33,17 +33,77 @@ export interface MessageLink {
   url: string;
 }
 
+// ---- Multi-tenant: users & credentials ----
+
+/** Platform role. Admins additionally manage users + credentials. */
+export type UserRole = 'user' | 'admin';
+
+/**
+ * Automation-request lifecycle for a signed-up user:
+ *   none      – signed up, has not requested the automation yet
+ *   pending   – requested, awaiting admin review
+ *   approved  – admin approved; user can operate their automation
+ *   rejected  – admin declined the request
+ */
+export type AutomationStatus = 'none' | 'pending' | 'approved' | 'rejected';
+
+/** Fully-resolved Instagram credentials used to talk to the Graph API. */
+export interface IgCredentials {
+  appId: string;
+  appSecret: string;
+  accessToken: string;
+  businessAccountId: string;
+  pageHandle: string;
+  verifyToken: string;
+  graphApiVersion: string;
+  graphBaseUrl: string;
+}
+
+/**
+ * How credentials are persisted on a user document. The two genuinely sensitive
+ * fields (appSecret, accessToken) are stored encrypted; the rest are plain so we
+ * can query/route on them (businessAccountId, verifyToken).
+ */
+export interface StoredIgCredentials {
+  appId: string;
+  appSecretEnc: string;
+  accessTokenEnc: string;
+  businessAccountId: string;
+  pageHandle: string;
+  verifyToken: string;
+  graphApiVersion: string;
+  graphBaseUrl: string;
+}
+
+/** A signed-up (Google) user of the SaaS. _id is a Mongo ObjectId. */
+export interface UserDoc {
+  googleId: string;
+  email: string;
+  name: string;
+  picture: string | null;
+  role: UserRole;
+  status: AutomationStatus;
+  requestNote: string | null;
+  requestedAt: string | null;
+  approvedAt: string | null;
+  igCredentials: StoredIgCredentials | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---- MongoDB document shapes ----
 
-/** _id is the comment id. */
+/** _id is the comment id. `ownerId` is the tenant (user) it belongs to. */
 export interface ProcessedCommentDoc {
   _id: string;
+  ownerId: string;
   processedAt: string;
 }
 
-/** _id is the reel (media) id. */
+/** _id is the reel (media) id (globally unique across Instagram). */
 export interface ReelConfigDoc {
   _id: string;
+  ownerId: string;
   enabled: boolean;
   /**
    * Comments must contain one of these (case-insensitive) to trigger the DM.
@@ -61,6 +121,7 @@ export interface ReelConfigDoc {
 }
 
 export interface FlowStateDoc {
+  ownerId: string;
   igUserId: string;
   commentId: string;
   reelId: string;
@@ -69,24 +130,17 @@ export interface FlowStateDoc {
   updatedAt: string;
 }
 
-/** _id is the template key. */
+/** _id is `${ownerId}::${templateKey}`; the global default owner is a sentinel. */
 export interface TemplateDoc {
   _id: string;
+  ownerId: string;
+  key: string;
   value: string;
   updatedAt: string;
 }
 
-/**
- * The single admin login account. _id is the (lowercased) email; only the
- * scrypt password hash is stored — never the plaintext.
- */
-export interface AdminUserDoc {
-  _id: string;
-  passwordHash: string;
-  updatedAt: string;
-}
-
 export interface LogDoc {
+  ownerId: string;
   commentId: string | null;
   igUserId: string | null;
   reelId: string | null;
@@ -97,6 +151,31 @@ export interface LogDoc {
 }
 
 // ---- API / domain shapes (what repositories return) ----
+
+/** Whether a user currently has usable Instagram credentials configured. */
+export interface CredentialSummary {
+  configured: boolean;
+  businessAccountId: string | null;
+  pageHandle: string | null;
+  source: 'env' | 'stored' | 'none';
+}
+
+/** A user as exposed over the API — never includes decrypted secrets. */
+export interface User {
+  id: string;
+  googleId: string;
+  email: string;
+  name: string;
+  picture: string | null;
+  role: UserRole;
+  status: AutomationStatus;
+  requestNote: string | null;
+  requestedAt: string | null;
+  approvedAt: string | null;
+  credentials: CredentialSummary;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface ReelConfig {
   reelId: string;

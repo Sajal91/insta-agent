@@ -16,6 +16,7 @@ function mapDoc(doc: WithId<LogDoc>): LogEntry {
 }
 
 export interface LogInput {
+  ownerId: string;
   commentId?: string | null;
   igUserId?: string | null;
   reelId?: string | null;
@@ -27,6 +28,7 @@ export interface LogInput {
 export const logsRepo = {
   async add(input: LogInput): Promise<void> {
     const doc: LogDoc = {
+      ownerId: input.ownerId,
       commentId: input.commentId ?? null,
       igUserId: input.igUserId ?? null,
       reelId: input.reelId ?? null,
@@ -39,13 +41,15 @@ export const logsRepo = {
   },
 
   async list(params: {
+    ownerId: string;
     limit: number;
     offset: number;
   }): Promise<{ items: LogEntry[]; total: number }> {
     const coll = collections.logs();
-    const total = await coll.countDocuments();
+    const filter = { ownerId: params.ownerId };
+    const total = await coll.countDocuments(filter);
     const docs = await coll
-      .find()
+      .find(filter)
       .sort({ _id: -1 })
       .skip(params.offset)
       .limit(params.limit)

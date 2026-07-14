@@ -27,24 +27,30 @@ export interface ReelConfigInput {
   links?: MessageLink[] | null;
 }
 
-/** Per-Reel overrides: enable/disable, keyword override, template overrides. */
+/**
+ * Per-reel overrides, scoped to a tenant (ownerId). Media (reel) ids are
+ * globally unique across Instagram, so the document _id stays the reel id while
+ * every read/write is additionally constrained to the owner for isolation.
+ */
 export const reelsRepo = {
-  async get(reelId: string): Promise<ReelConfig | null> {
-    const doc = await collections.reelConfigs().findOne({ _id: reelId });
+  async get(ownerId: string, reelId: string): Promise<ReelConfig | null> {
+    const doc = await collections
+      .reelConfigs()
+      .findOne({ _id: reelId, ownerId });
     return doc ? mapDoc(doc) : null;
   },
 
-  async list(): Promise<ReelConfig[]> {
+  async list(ownerId: string): Promise<ReelConfig[]> {
     const docs = await collections
       .reelConfigs()
-      .find()
+      .find({ ownerId })
       .sort({ updatedAt: -1 })
       .toArray();
     return docs.map(mapDoc);
   },
 
-  async upsert(input: ReelConfigInput): Promise<ReelConfig> {
-    const existing = await this.get(input.reelId);
+  async upsert(ownerId: string, input: ReelConfigInput): Promise<ReelConfig> {
+    const existing = await this.get(ownerId, input.reelId);
     const now = new Date().toISOString();
 
     const enabled = input.enabled ?? existing?.enabled ?? true;
@@ -57,12 +63,11 @@ export const reelsRepo = {
         ? existing?.triggerKeywords ?? []
         : input.triggerKeywords ?? [];
     const links =
-      input.links === undefined
-        ? existing?.links ?? []
-        : input.links ?? [];
+      input.links === undefined ? existing?.links ?? [] : input.links ?? [];
 
     const doc: ReelConfigDoc = {
       _id: input.reelId,
+      ownerId,
       enabled,
       triggerKeywords: triggers,
       dmTemplate: input.dmTemplate ?? existing?.dmTemplate ?? null,
@@ -78,16 +83,16 @@ export const reelsRepo = {
       updatedAt: now,
     };
 
-    await collections.reelConfigs().updateOne(
-      { _id: input.reelId },
-      { $set: doc },
-      { upsert: true },
-    );
+    await collections
+      .reelConfigs()
+      .updateOne({ _id: input.reelId }, { $set: doc }, { upsert: true });
     return mapDoc(doc);
   },
 
-  async delete(reelId: string): Promise<boolean> {
-    const res = await collections.reelConfigs().deleteOne({ _id: reelId });
+  async delete(ownerId: string, reelId: string): Promise<boolean> {
+    const res = await collections
+      .reelConfigs()
+      .deleteOne({ _id: reelId, ownerId });
     return res.deletedCount > 0;
   },
 };

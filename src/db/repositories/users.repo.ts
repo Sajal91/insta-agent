@@ -1,0 +1,286 @@
+import { ObjectId, type WithId } from 'mongodb';
+import { collections } from '../index';
+import { config } from '../../config/env';
+import { decryptSecret, encryptSecret } from '../../utils/crypto';
+import type {
+  AutomationStatus,
+  CredentialSummary,
+  IgCredentials,
+  StoredIgCredentials,
+  User,
+  UserDoc,
+  UserRole,
+} from '../types';
+
+/** Input used to persist a user's Instagram credentials (admin-provided). */
+export interface CredentialsInput {
+  appId: string;
+  appSecret: string;
+  accessToken: string;
+  businessAccountId: string;
+  pageHandle: string;
+  verifyToken: string;
+  graphApiVersion?: string;
+  graphBaseUrl?: string;
+}
+
+function toStored(input: CredentialsInput): StoredIgCredentials {
+  return {
+    appId: input.appId,
+    appSecretEnc: encryptSecret(input.appSecret),
+    accessTokenEnc: encryptSecret(input.accessToken),
+    businessAccountId: input.businessAccountId,
+    pageHandle: input.pageHandle,
+    verifyToken: input.verifyToken,
+    graphApiVersion: input.graphApiVersion?.trim() || 'v21.0',
+    graphBaseUrl: input.graphBaseUrl?.trim() || 'https://graph.instagram.com',
+  };
+}
+
+/** Decrypt a stored credential set into a usable IgCredentials, or null. */
+export function decryptStored(
+  stored: StoredIgCredentials | null,
+): IgCredentials | null {
+  if (!stored) return null;
+  const appSecret = decryptSecret(stored.appSecretEnc);
+  const accessToken = decryptSecret(stored.accessTokenEnc);
+  if (appSecret === null || accessToken === null) return null;
+  return {
+    appId: stored.appId,
+    appSecret,
+    accessToken,
+    businessAccountId: stored.businessAccountId,
+    pageHandle: stored.pageHandle,
+    verifyToken: stored.verifyToken,
+    graphApiVersion: stored.graphApiVersion,
+    graphBaseUrl: stored.graphBaseUrl,
+  };
+}
+
+function credentialSummary(doc: WithId<UserDoc>): CredentialSummary {
+  if (doc.igCredentials) {
+    return {
+      configured: true,
+      businessAccountId: doc.igCredentials.businessAccountId,
+      pageHandle: doc.igCredentials.pageHandle,
+      source: 'stored',
+    };
+  }
+  // The admin falls back to the env credentials when none are stored.
+  const isAdmin =
+    doc.role === 'admin' ||
+    doc.email.trim().toLowerCase() === config.ADMIN_EMAIL.trim().toLowerCase();
+  const hasEnv = Boolean(
+    config.IG_ACCESS_TOKEN && config.IG_BUSINESS_ACCOUNT_ID && config.IG_APP_SECRET,
+  );
+  if (isAdmin && hasEnv) {
+    return {
+      configured: true,
+      businessAccountId: config.IG_BUSINESS_ACCOUNT_ID,
+      pageHandle: config.IG_PAGE_HANDLE,
+      source: 'env',
+    };
+  }
+  return {
+    configured: false,
+    businessAccountId: null,
+    pageHandle: null,
+    source: 'none',
+  };
+}
+
+/** Map a stored user document to the API-safe domain shape (no secrets). */
+export function mapUser(doc: WithId<UserDoc>): User {
+  return {
+    id: doc._id.toString(),
+    googleId: doc.googleId,
+    email: doc.email,
+    name: doc.name,
+    picture: doc.picture,
+    role: doc.role,
+    status: doc.status,
+    requestNote: doc.requestNote,
+    requestedAt: doc.requestedAt,
+    approvedAt: doc.approvedAt,
+    credentials: credentialSummary(doc),
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+export interface GoogleProfile {
+  googleId: string;
+  email: string;
+  name: string;
+  picture: string | null;
+}
+
+export const usersRepo = {
+  async findById(id: string): Promise<WithId<UserDoc> | null> {
+    if (!ObjectId.isValid(id)) return null;
+    return collections.users().findOne({ _id: new ObjectId(id) });
+  },
+
+  async findByGoogleId(googleId: string): Promise<WithId<UserDoc> | null> {
+    return collections.users().findOne({ googleId });
+  },
+
+  async findByEmail(email: string): Promise<WithId<UserDoc> | null> {
+    return collections.users().findOne({ email: email.trim().toLowerCase() });
+  },
+
+  /** Find the approved tenant that owns a given Instagram business account id. */
+  async findByBusinessAccountId(
+    businessAccountId: string,
+  ): Promise<WithId<UserDoc> | null> {
+    return collections
+      .users()
+      .findOne({ 'igCredentials.businessAccountId': businessAccountId });
+  },
+
+  /** Find the tenant whose per-user verify token matches (webhook handshake). */
+  async findByVerifyToken(
+    verifyToken: string,
+  ): Promise<WithId<UserDoc> | null> {
+    return collections
+      .users()
+      .findOne({ 'igCredentials.verifyToken': verifyToken });
+  },
+
+  /**
+   * Create the user on first Google login, or refresh their profile fields on
+   * subsequent logins. `adminEmail` is auto-promoted to the admin role.
+   */
+  async upsertFromGoogle(
+    profile: GoogleProfile,
+    adminEmail: string,
+  ): Promise<WithId<UserDoc>> {
+    const coll = collections.users();
+    const email = profile.email.trim().toLowerCase();
+    const now = new Date().toISOString();
+    const existing = await coll.findOne({ googleId: profile.googleId });
+
+    if (existing) {
+      const shouldBeAdmin = email === adminEmail.trim().toLowerCase();
+      await coll.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            email,
+            name: profile.name,
+            picture: profile.picture,
+            // Promote to admin if the email matches; never auto-demote.
+            role: shouldBeAdmin ? 'admin' : existing.role,
+            updatedAt: now,
+          },
+        },
+      );
+      return (await coll.findOne({ _id: existing._id }))!;
+    }
+
+    const role: UserRole =
+      email === adminEmail.trim().toLowerCase() ? 'admin' : 'user';
+    const doc: UserDoc = {
+      googleId: profile.googleId,
+      email,
+      name: profile.name,
+      picture: profile.picture,
+      role,
+      status: 'none',
+      requestNote: null,
+      requestedAt: null,
+      approvedAt: null,
+      igCredentials: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const res = await coll.insertOne(doc);
+    return (await coll.findOne({ _id: res.insertedId }))!;
+  },
+
+  async list(): Promise<User[]> {
+    const docs = await collections
+      .users()
+      .find()
+      .sort({ createdAt: -1 })
+      .toArray();
+    return docs.map(mapUser);
+  },
+
+  /** Record an automation request from a user (moves status -> pending). */
+  async requestAutomation(id: string, note: string | null): Promise<User | null> {
+    if (!ObjectId.isValid(id)) return null;
+    const now = new Date().toISOString();
+    const coll = collections.users();
+    await coll.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status: 'pending',
+          requestNote: note,
+          requestedAt: now,
+          updatedAt: now,
+        },
+      },
+    );
+    const doc = await coll.findOne({ _id: new ObjectId(id) });
+    return doc ? mapUser(doc) : null;
+  },
+
+  async setStatus(id: string, status: AutomationStatus): Promise<User | null> {
+    if (!ObjectId.isValid(id)) return null;
+    const now = new Date().toISOString();
+    const coll = collections.users();
+    await coll.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status,
+          approvedAt: status === 'approved' ? now : null,
+          updatedAt: now,
+        },
+      },
+    );
+    const doc = await coll.findOne({ _id: new ObjectId(id) });
+    return doc ? mapUser(doc) : null;
+  },
+
+  async setRole(id: string, role: UserRole): Promise<User | null> {
+    if (!ObjectId.isValid(id)) return null;
+    const now = new Date().toISOString();
+    const coll = collections.users();
+    await coll.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { role, updatedAt: now } },
+    );
+    const doc = await coll.findOne({ _id: new ObjectId(id) });
+    return doc ? mapUser(doc) : null;
+  },
+
+  async setCredentials(
+    id: string,
+    input: CredentialsInput,
+  ): Promise<User | null> {
+    if (!ObjectId.isValid(id)) return null;
+    const now = new Date().toISOString();
+    const coll = collections.users();
+    await coll.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { igCredentials: toStored(input), updatedAt: now } },
+    );
+    const doc = await coll.findOne({ _id: new ObjectId(id) });
+    return doc ? mapUser(doc) : null;
+  },
+
+  async clearCredentials(id: string): Promise<User | null> {
+    if (!ObjectId.isValid(id)) return null;
+    const now = new Date().toISOString();
+    const coll = collections.users();
+    await coll.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { igCredentials: null, updatedAt: now } },
+    );
+    const doc = await coll.findOne({ _id: new ObjectId(id) });
+    return doc ? mapUser(doc) : null;
+  },
+};

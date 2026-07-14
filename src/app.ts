@@ -17,6 +17,20 @@ import { flowsRouter } from './routes/flows.routes';
 import { replyRouter } from './routes/reply.routes';
 import { mediaRouter } from './routes/media.routes';
 import { authRouter } from './routes/auth.routes';
+import { usersRouter } from './routes/users.routes';
+
+/**
+ * Express augmentation: the raw request body is captured during JSON parsing so
+ * the webhook route can HMAC the exact bytes Meta signed.
+ */
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      rawBody?: Buffer;
+    }
+  }
+}
 
 export function createApp(): express.Express {
   const app = express();
@@ -51,6 +65,7 @@ export function createApp(): express.Express {
   });
 
   app.use('/auth', authRouter);
+  app.use('/users', usersRouter);
   app.use('/webhooks', webhookRouter);
   app.use('/reels', reelsRouter);
   app.use('/templates', templatesRouter);
@@ -81,6 +96,7 @@ export function createApp(): express.Express {
 /** Prefixes owned by the JSON API — never fall these back to the SPA index. */
 const API_PREFIXES = [
   '/auth',
+  '/users',
   '/webhooks',
   '/reels',
   '/templates',

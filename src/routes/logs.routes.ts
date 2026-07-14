@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth';
+import { requireApproved } from '../middleware/auth';
 import { logsRepo } from '../db/repositories/logs.repo';
 import { asyncHandler, formatZodError } from '../utils/http';
 
 export const logsRouter = Router();
-logsRouter.use(requireAuth);
+logsRouter.use(requireApproved);
 
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -21,7 +21,8 @@ logsRouter.get(
       return;
     }
     const { limit, offset } = parsed.data;
-    const { items, total } = await logsRepo.list({ limit, offset });
+    const ownerId = req.user!._id.toString();
+    const { items, total } = await logsRepo.list({ ownerId, limit, offset });
     res.json({ total, limit, offset, items });
   }),
 );

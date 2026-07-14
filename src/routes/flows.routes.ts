@@ -1,16 +1,17 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireApproved } from '../middleware/auth';
 import { flowStateRepo } from '../db/repositories/flow-state.repo';
 import { asyncHandler } from '../utils/http';
 
 export const flowsRouter = Router();
-flowsRouter.use(requireAuth);
+flowsRouter.use(requireApproved);
 
-/** View a user's flow state/history — handy when debugging a support request. */
+/** View a commenter's flow state/history within the acting tenant. */
 flowsRouter.get(
   '/:igUserId',
   asyncHandler(async (req, res) => {
-    const states = await flowStateRepo.listByUser(req.params.igUserId);
+    const ownerId = req.user!._id.toString();
+    const states = await flowStateRepo.listByUser(ownerId, req.params.igUserId);
     res.json({ igUserId: req.params.igUserId, states });
   }),
 );

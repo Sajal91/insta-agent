@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth';
+import { requireApproved } from '../middleware/auth';
 import { reelsRepo } from '../db/repositories/reels.repo';
 import { asyncHandler, formatZodError } from '../utils/http';
 
 export const reelsRouter = Router();
-reelsRouter.use(requireAuth);
+reelsRouter.use(requireApproved);
 
 const linkSchema = z.object({
   // Instagram button titles are capped at 20 characters.
@@ -27,15 +27,17 @@ const upsertSchema = z.object({
 
 reelsRouter.get(
   '/',
-  asyncHandler(async (_req, res) => {
-    res.json({ reels: await reelsRepo.list() });
+  asyncHandler(async (req, res) => {
+    const ownerId = req.user!._id.toString();
+    res.json({ reels: await reelsRepo.list(ownerId) });
   }),
 );
 
 reelsRouter.get(
   '/:reelId',
   asyncHandler(async (req, res) => {
-    const reel = await reelsRepo.get(req.params.reelId);
+    const ownerId = req.user!._id.toString();
+    const reel = await reelsRepo.get(ownerId, req.params.reelId);
     if (!reel) {
       res.status(404).json({ error: 'Reel config not found' });
       return;
@@ -52,7 +54,8 @@ reelsRouter.post(
       res.status(400).json(formatZodError(parsed.error));
       return;
     }
-    const reel = await reelsRepo.upsert(parsed.data);
+    const ownerId = req.user!._id.toString();
+    const reel = await reelsRepo.upsert(ownerId, parsed.data);
     res.status(200).json({ reel });
   }),
 );
@@ -60,7 +63,8 @@ reelsRouter.post(
 reelsRouter.delete(
   '/:reelId',
   asyncHandler(async (req, res) => {
-    const deleted = await reelsRepo.delete(req.params.reelId);
+    const ownerId = req.user!._id.toString();
+    const deleted = await reelsRepo.delete(ownerId, req.params.reelId);
     if (!deleted) {
       res.status(404).json({ error: 'Reel config not found' });
       return;

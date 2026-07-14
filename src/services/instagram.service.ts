@@ -1,8 +1,5 @@
-import { config } from '../config/env';
 import { logger } from '../utils/logger';
-import type { MessageLink } from '../db/types';
-
-const BASE_URL = config.IG_GRAPH_BASE_URL;
+import type { IgCredentials, MessageLink } from '../db/types';
 
 // Instagram button-template limits.
 const MAX_BUTTONS = 3;
@@ -100,11 +97,14 @@ interface RequestOptions {
   maxRetries?: number;
 }
 
-async function graphRequest<T>(opts: RequestOptions): Promise<T> {
+async function graphRequest<T>(
+  creds: IgCredentials,
+  opts: RequestOptions,
+): Promise<T> {
   const { method, path, query = {}, body, maxRetries = 3 } = opts;
-  const url = new URL(`${BASE_URL}/${config.IG_GRAPH_API_VERSION}/${path}`);
+  const url = new URL(`${creds.graphBaseUrl}/${creds.graphApiVersion}/${path}`);
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
-  url.searchParams.set('access_token', config.IG_ACCESS_TOKEN);
+  url.searchParams.set('access_token', creds.accessToken);
 
   const init: RequestInit = { method };
   if (body !== undefined) {
@@ -160,155 +160,154 @@ async function graphRequest<T>(opts: RequestOptions): Promise<T> {
   }
 }
 
-export const instagramService = {
-  /**
-   * Post a PUBLIC reply to a specific comment.
-   * POST /{ig-comment-id}/replies?message=...
-   * Returns the newly-created comment id.
-   */
-  async replyToComment(commentId: string, message: string): Promise<string> {
-    const result = await graphRequest<{ id: string }>({
-      method: 'POST',
-      path: `${commentId}/replies`,
-      query: { message },
-    });
-    logger.info({ commentId, replyId: result.id }, 'Posted reply to comment');
-    return result.id;
-  },
-
-  /**
-   * Send a PRIVATE reply (DM) to the author of a comment.
-   * POST /{ig-user-id}/messages  with { recipient: { comment_id }, message: { text } }
-   *
-   * Requires the `instagram_business_manage_messages` permission (Instagram Login)
-   * / `pages_messaging` (Facebook Login) plus Advanced Access. Meta rules: one
-   * private reply per comment, must be sent within 7 days of the comment.
-   *
-   * When `links` are supplied, the message is sent as a button template so the
-   * CTAs render as tappable buttons (max 3, per Instagram's limit); otherwise a
-   * plain text message is sent. Returns the message id.
-   */
-  async sendPrivateReply(
+/**
+ * A credentials-bound Instagram client. Build one per tenant with
+ * `createInstagramClient(creds)`; all calls use that tenant's access token,
+ * business account id, and Graph host/version.
+ */
+export interface InstagramClient {
+  replyToComment(commentId: string, message: string): Promise<string>;
+  sendPrivateReply(
     commentId: string,
     message: string,
-    links: MessageLink[] = [],
-  ): Promise<string> {
-    const messageBody =
-      links.length > 0
-        ? buildButtonMessage(message, links)
-        : { text: message };
-
-    const result = await graphRequest<{ message_id?: string; recipient_id?: string }>({
-      method: 'POST',
-      path: `${config.IG_BUSINESS_ACCOUNT_ID}/messages`,
-      body: {
-        recipient: { comment_id: commentId },
-        message: messageBody,
-      },
-    });
-    const messageId = result.message_id ?? '';
-    logger.info(
-      { commentId, messageId, buttons: Math.min(links.length, MAX_BUTTONS) },
-      'Sent private reply (DM) to commenter',
-    );
-    return messageId;
-  },
-
-  /**
-   * Fetch a single comment's details. Handy for the manual-reply endpoint and
-   * for enriching events that arrive without full context.
-   */
-  async getComment(commentId: string): Promise<GraphComment> {
-    return graphRequest<GraphComment>({
-      method: 'GET',
-      path: commentId,
-      query: {
-        fields: 'id,text,username,timestamp,from,parent_id,media',
-      },
-    });
-  },
-
-  /**
-   * List the connected account's media (posts + reels), newest first.
-   * GET /{ig-user-id}/media?fields=...
-   */
-  async listMedia(limit = 25): Promise<GraphMedia[]> {
-    const result = await graphRequest<{ data?: GraphMedia[] }>({
-      method: 'GET',
-      path: `${config.IG_BUSINESS_ACCOUNT_ID}/media`,
-      query: {
-        fields:
-          'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count',
-        limit: String(limit),
-      },
-    });
-    return result.data ?? [];
-  },
-
-  /**
-   * Publish a new post (IMAGE) or reel (REELS) from a public media URL.
-   *
-   * Two-step Content Publishing API:
-   *   1. Create a media container (POST /{ig-id}/media)
-   *   2. Publish it (POST /{ig-id}/media_publish?creation_id=...)
-   * For REELS the container must finish processing first, so we poll its status.
-   *
-   * Requires the `instagram_content_publish` / `instagram_business_content_publish`
-   * permission. The media URL must be publicly reachable (Meta fetches it).
-   * Returns the published media id.
-   */
-  async publishMedia(input: PublishInput): Promise<string> {
-    const containerQuery: Record<string, string> =
-      input.mediaType === 'REELS'
-        ? { media_type: 'REELS', video_url: input.mediaUrl }
-        : { image_url: input.mediaUrl };
-    if (input.caption) containerQuery.caption = input.caption;
-
-    const container = await graphRequest<{ id: string }>({
-      method: 'POST',
-      path: `${config.IG_BUSINESS_ACCOUNT_ID}/media`,
-      query: containerQuery,
-    });
-
-    // Reels need processing time before they can be published.
-    if (input.mediaType === 'REELS') {
-      await this.waitForContainerReady(container.id);
-    }
-
-    const published = await graphRequest<{ id: string }>({
-      method: 'POST',
-      path: `${config.IG_BUSINESS_ACCOUNT_ID}/media_publish`,
-      query: { creation_id: container.id },
-    });
-    logger.info({ mediaId: published.id }, 'Published media');
-    return published.id;
-  },
-
-  /** Poll a media container until it's FINISHED (or throw on ERROR/timeout). */
-  async waitForContainerReady(
+    links?: MessageLink[],
+  ): Promise<string>;
+  getComment(commentId: string): Promise<GraphComment>;
+  listMedia(limit?: number): Promise<GraphMedia[]>;
+  publishMedia(input: PublishInput): Promise<string>;
+  waitForContainerReady(
     containerId: string,
-    { attempts = 20, intervalMs = 3000 } = {},
-  ): Promise<void> {
-    for (let i = 0; i < attempts; i += 1) {
-      const status = await graphRequest<{ status_code?: string; status?: string }>({
-        method: 'GET',
-        path: containerId,
-        query: { fields: 'status_code,status' },
+    opts?: { attempts?: number; intervalMs?: number },
+  ): Promise<void>;
+}
+
+export function createInstagramClient(creds: IgCredentials): InstagramClient {
+  const client: InstagramClient = {
+    /**
+     * Post a PUBLIC reply to a specific comment.
+     * POST /{ig-comment-id}/replies?message=...  Returns the new comment id.
+     */
+    async replyToComment(commentId, message) {
+      const result = await graphRequest<{ id: string }>(creds, {
+        method: 'POST',
+        path: `${commentId}/replies`,
+        query: { message },
       });
-      if (status.status_code === 'FINISHED') return;
-      if (status.status_code === 'ERROR') {
-        throw new InstagramApiError(
-          `Media container ${containerId} failed processing: ${status.status ?? 'ERROR'}`,
-          400,
-          status,
-        );
+      logger.info({ commentId, replyId: result.id }, 'Posted reply to comment');
+      return result.id;
+    },
+
+    /**
+     * Send a PRIVATE reply (DM) to the author of a comment.
+     * POST /{ig-user-id}/messages  with { recipient: { comment_id }, message }.
+     * When `links` are supplied the DM is sent as a button template (max 3).
+     */
+    async sendPrivateReply(commentId, message, links = []) {
+      const messageBody =
+        links.length > 0 ? buildButtonMessage(message, links) : { text: message };
+
+      const result = await graphRequest<{
+        message_id?: string;
+        recipient_id?: string;
+      }>(creds, {
+        method: 'POST',
+        path: `${creds.businessAccountId}/messages`,
+        body: {
+          recipient: { comment_id: commentId },
+          message: messageBody,
+        },
+      });
+      const messageId = result.message_id ?? '';
+      logger.info(
+        { commentId, messageId, buttons: Math.min(links.length, MAX_BUTTONS) },
+        'Sent private reply (DM) to commenter',
+      );
+      return messageId;
+    },
+
+    /** Fetch a single comment's details. */
+    async getComment(commentId) {
+      return graphRequest<GraphComment>(creds, {
+        method: 'GET',
+        path: commentId,
+        query: {
+          fields: 'id,text,username,timestamp,from,parent_id,media',
+        },
+      });
+    },
+
+    /** List the connected account's media (posts + reels), newest first. */
+    async listMedia(limit = 25) {
+      const result = await graphRequest<{ data?: GraphMedia[] }>(creds, {
+        method: 'GET',
+        path: `${creds.businessAccountId}/media`,
+        query: {
+          fields:
+            'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count',
+          limit: String(limit),
+        },
+      });
+      return result.data ?? [];
+    },
+
+    /**
+     * Publish a new post (IMAGE) or reel (REELS) from a public media URL via the
+     * two-step Content Publishing API. Returns the published media id.
+     */
+    async publishMedia(input) {
+      const containerQuery: Record<string, string> =
+        input.mediaType === 'REELS'
+          ? { media_type: 'REELS', video_url: input.mediaUrl }
+          : { image_url: input.mediaUrl };
+      if (input.caption) containerQuery.caption = input.caption;
+
+      const container = await graphRequest<{ id: string }>(creds, {
+        method: 'POST',
+        path: `${creds.businessAccountId}/media`,
+        query: containerQuery,
+      });
+
+      // Reels need processing time before they can be published.
+      if (input.mediaType === 'REELS') {
+        await client.waitForContainerReady(container.id);
       }
-      await sleep(intervalMs);
-    }
-    throw new InstagramApiError(
-      `Media container ${containerId} not ready after ${attempts} checks`,
-      408,
-      null,
-    );
-  },
-};
+
+      const published = await graphRequest<{ id: string }>(creds, {
+        method: 'POST',
+        path: `${creds.businessAccountId}/media_publish`,
+        query: { creation_id: container.id },
+      });
+      logger.info({ mediaId: published.id }, 'Published media');
+      return published.id;
+    },
+
+    /** Poll a media container until it's FINISHED (or throw on ERROR/timeout). */
+    async waitForContainerReady(containerId, { attempts = 20, intervalMs = 3000 } = {}) {
+      for (let i = 0; i < attempts; i += 1) {
+        const status = await graphRequest<{
+          status_code?: string;
+          status?: string;
+        }>(creds, {
+          method: 'GET',
+          path: containerId,
+          query: { fields: 'status_code,status' },
+        });
+        if (status.status_code === 'FINISHED') return;
+        if (status.status_code === 'ERROR') {
+          throw new InstagramApiError(
+            `Media container ${containerId} failed processing: ${status.status ?? 'ERROR'}`,
+            400,
+            status,
+          );
+        }
+        await sleep(intervalMs);
+      }
+      throw new InstagramApiError(
+        `Media container ${containerId} not ready after ${attempts} checks`,
+        408,
+        null,
+      );
+    },
+  };
+  return client;
+}

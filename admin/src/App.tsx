@@ -1,29 +1,31 @@
 import { useEffect, useState } from 'react';
 import { api, clearToken, getToken } from './api';
+import type { User } from './types';
 import { Login } from './components/Login';
 import { PostsList } from './components/PostsList';
 import { CreatePost } from './components/CreatePost';
 import { TemplatesEditor } from './components/TemplatesEditor';
 import { LogsView } from './components/LogsView';
+import { UsersAdmin } from './components/UsersAdmin';
+import { RequestAutomation } from './components/RequestAutomation';
 
-type Tab = 'posts' | 'create' | 'templates' | 'logs';
+type Tab = 'users' | 'posts' | 'create' | 'templates' | 'logs';
 
-const TABS: { id: Tab; label: string }[] = [
+const AUTOMATION_TABS: { id: Tab; label: string }[] = [
   { id: 'posts', label: 'Posts' },
   { id: 'create', label: 'Create post' },
-  { id: 'templates', label: 'Default templates' },
+  { id: 'templates', label: 'Templates' },
   { id: 'logs', label: 'Activity log' },
 ];
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('posts');
   const [authState, setAuthState] = useState<'checking' | 'out' | 'in'>(
     'checking',
   );
-  const [email, setEmail] = useState('');
+  const [user, setUser] = useState<User | null>(null);
+  const [tab, setTab] = useState<Tab>('posts');
   const [health, setHealth] = useState<'unknown' | 'ok' | 'down'>('unknown');
 
-  // Validate any stored token on load.
   useEffect(() => {
     if (!getToken()) {
       setAuthState('out');
@@ -31,8 +33,8 @@ export function App() {
     }
     api
       .me()
-      .then(({ email }) => {
-        setEmail(email);
+      .then(({ user }) => {
+        setUser(user);
         setAuthState('in');
       })
       .catch(() => {
@@ -51,7 +53,7 @@ export function App() {
 
   function logout() {
     clearToken();
-    setEmail('');
+    setUser(null);
     setAuthState('out');
   }
 
@@ -59,16 +61,28 @@ export function App() {
     return <div className="empty">Loading…</div>;
   }
 
-  if (authState === 'out') {
+  if (authState === 'out' || !user) {
     return (
       <Login
-        onSuccess={(loggedInAs) => {
-          setEmail(loggedInAs);
+        onSuccess={(loggedIn) => {
+          setUser(loggedIn);
           setAuthState('in');
         }}
       />
     );
   }
+
+  const isAdmin = user.role === 'admin';
+  const canAutomate = isAdmin || user.status === 'approved';
+  const tabs: { id: Tab; label: string }[] = [
+    ...(isAdmin ? [{ id: 'users' as Tab, label: 'Users' }] : []),
+    ...(canAutomate ? AUTOMATION_TABS : []),
+  ];
+
+  // Keep the active tab valid for this user's available tabs.
+  const activeTab = tabs.some((t) => t.id === tab)
+    ? tab
+    : tabs[0]?.id ?? 'posts';
 
   return (
     <div className="app">
@@ -76,7 +90,7 @@ export function App() {
         <div className="brand">
           insta<span>·</span>agent{' '}
           <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 14 }}>
-            admin
+            {isAdmin ? 'admin' : 'saas'}
           </span>
         </div>
         <div className="apikey-bar">
@@ -92,36 +106,50 @@ export function App() {
             }}
             title={`API ${health}`}
           />
+          {user.picture && (
+            <img
+              src={user.picture}
+              alt=""
+              width={24}
+              height={24}
+              style={{ borderRadius: '50%' }}
+              referrerPolicy="no-referrer"
+            />
+          )}
           <span className="muted" style={{ fontSize: 13 }}>
-            {email}
+            {user.email}
           </span>
           <button className="btn secondary sm" onClick={logout}>
             Log out
           </button>
         </div>
       </div>
-      <div className="hint">
-        Backend:{' '}
-        <code className="inline">{api.baseUrl || window.location.origin}</code>
-        {health === 'down' && ' — not reachable'}
-      </div>
 
-      <div className="tabs">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={`tab ${tab === t.id ? 'active' : ''}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {tabs.length > 0 && (
+        <div className="tabs">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              className={`tab ${activeTab === t.id ? 'active' : ''}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {tab === 'posts' && <PostsList />}
-      {tab === 'create' && <CreatePost />}
-      {tab === 'templates' && <TemplatesEditor />}
-      {tab === 'logs' && <LogsView />}
+      {!canAutomate && !isAdmin ? (
+        <RequestAutomation user={user} onUpdated={setUser} />
+      ) : (
+        <>
+          {activeTab === 'users' && <UsersAdmin />}
+          {activeTab === 'posts' && <PostsList />}
+          {activeTab === 'create' && <CreatePost />}
+          {activeTab === 'templates' && <TemplatesEditor />}
+          {activeTab === 'logs' && <LogsView />}
+        </>
+      )}
     </div>
   );
 }

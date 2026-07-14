@@ -13,20 +13,21 @@ function mapDoc(doc: FlowStateDoc): FlowState {
 }
 
 /**
- * Per-user delivery record. Keyed by (igUserId, reelId) with a unique index, so
- * we keep one row per user+reel recording that details were delivered.
+ * Per-commenter delivery record, scoped to a tenant. Keyed by
+ * (ownerId, igUserId, reelId) with a unique index.
  */
 export const flowStateRepo = {
-  async listByUser(igUserId: string): Promise<FlowState[]> {
+  async listByUser(ownerId: string, igUserId: string): Promise<FlowState[]> {
     const docs = await collections
       .flowStates()
-      .find({ igUserId })
+      .find({ ownerId, igUserId })
       .sort({ updatedAt: -1 })
       .toArray();
     return docs.map(mapDoc);
   },
 
   async upsert(params: {
+    ownerId: string;
     igUserId: string;
     commentId: string;
     reelId: string;
@@ -34,7 +35,11 @@ export const flowStateRepo = {
   }): Promise<void> {
     const now = new Date().toISOString();
     await collections.flowStates().updateOne(
-      { igUserId: params.igUserId, reelId: params.reelId },
+      {
+        ownerId: params.ownerId,
+        igUserId: params.igUserId,
+        reelId: params.reelId,
+      },
       {
         $set: {
           commentId: params.commentId,
@@ -42,6 +47,7 @@ export const flowStateRepo = {
           updatedAt: now,
         },
         $setOnInsert: {
+          ownerId: params.ownerId,
           igUserId: params.igUserId,
           reelId: params.reelId,
           createdAt: now,

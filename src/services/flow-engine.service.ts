@@ -1,14 +1,20 @@
-import { config } from '../config/env';
 import { logger } from '../utils/logger';
 import { containsAnyKeyword, parseKeywordList } from '../utils/keyword';
 import { render } from './template.service';
 import { commentsRepo } from '../db/repositories/comments.repo';
 import { flowStateRepo } from '../db/repositories/flow-state.repo';
 import { reelsRepo } from '../db/repositories/reels.repo';
-import { templatesRepo } from '../db/repositories/templates.repo';
+import { templatesRepo, type TemplateKey } from '../db/repositories/templates.repo';
 import { logsRepo } from '../db/repositories/logs.repo';
-import { instagramService } from './instagram.service';
-import type { ActionType, MessageLink } from '../db/types';
+import { createInstagramClient } from './instagram.service';
+import type {
+  ActionType,
+  FlowStage,
+  IgCredentials,
+  LogStatus,
+  MessageLink,
+  ReelConfig,
+} from '../db/types';
 
 /**
  * A normalized comment event. The webhook route maps Meta's raw payload into
@@ -29,29 +35,75 @@ export interface FlowResult {
   detail?: string;
 }
 
-/**
- * Dependencies the engine needs. Defaulted to the real implementations, but
- * injectable so unit tests can supply fakes (no DB / no network required).
- */
-export interface FlowDeps {
-  reels: Pick<typeof reelsRepo, 'get'>;
-  flows: Pick<typeof flowStateRepo, 'upsert'>;
-  comments: Pick<typeof commentsRepo, 'isProcessed' | 'markProcessed'>;
-  templates: Pick<typeof templatesRepo, 'get'>;
-  logs: Pick<typeof logsRepo, 'add'>;
-  ig: Pick<typeof instagramService, 'replyToComment' | 'sendPrivateReply'>;
-  ownAccountId: string;
+/** Log entry the engine emits; the owner is injected by the deps wrapper. */
+interface EngineLogInput {
+  commentId?: string | null;
+  igUserId?: string | null;
+  reelId?: string | null;
+  action: ActionType;
+  status: LogStatus;
+  message?: string | null;
 }
 
-function defaultDeps(): FlowDeps {
+/**
+ * Dependencies the engine needs. In production these are owner-bound wrappers
+ * built by `buildProductionDeps`; unit tests supply in-memory fakes with the
+ * same (owner-agnostic) call signatures.
+ */
+export interface FlowDeps {
+  reels: { get(reelId: string): Promise<ReelConfig | null> };
+  flows: {
+    upsert(params: {
+      igUserId: string;
+      commentId: string;
+      reelId: string;
+      stage: FlowStage;
+    }): Promise<void>;
+  };
+  comments: {
+    isProcessed(commentId: string): Promise<boolean>;
+    markProcessed(commentId: string): Promise<boolean>;
+  };
+  templates: { get(key: TemplateKey): Promise<string | null> };
+  logs: { add(entry: EngineLogInput): Promise<void> };
+  ig: {
+    replyToComment(commentId: string, message: string): Promise<string>;
+    sendPrivateReply(
+      commentId: string,
+      message: string,
+      links?: MessageLink[],
+    ): Promise<string>;
+  };
+  /** The tenant's own IG business account id (to skip its own comments). */
+  ownAccountId: string;
+  /** The tenant's @handle used in {{pageHandle}} placeholders. */
+  pageHandle?: string;
+}
+
+/**
+ * Build the real, owner-scoped dependencies for a tenant. Every repo call is
+ * bound to `ownerId` and Graph API calls use that tenant's credentials.
+ */
+export function buildProductionDeps(
+  ownerId: string,
+  creds: IgCredentials,
+): FlowDeps {
+  const ig = createInstagramClient(creds);
   return {
-    reels: reelsRepo,
-    flows: flowStateRepo,
-    comments: commentsRepo,
-    templates: templatesRepo,
-    logs: logsRepo,
-    ig: instagramService,
-    ownAccountId: config.IG_BUSINESS_ACCOUNT_ID,
+    reels: { get: (reelId) => reelsRepo.get(ownerId, reelId) },
+    flows: {
+      upsert: (params) => flowStateRepo.upsert({ ownerId, ...params }),
+    },
+    comments: {
+      isProcessed: (commentId) => commentsRepo.isProcessed(commentId),
+      markProcessed: (commentId) =>
+        commentsRepo.markProcessed(ownerId, commentId),
+    },
+    templates: { get: (key) => templatesRepo.get(ownerId, key) },
+    logs: { add: (entry) => logsRepo.add({ ownerId, ...entry }) },
+    ig,
+    ownAccountId: creds.businessAccountId,
+    pageHandle: creds.pageHandle,
   };
 }
 
@@ -131,9 +183,8 @@ async function resolveTriggerKeywords(
  */
 export async function processCommentEvent(
   event: CommentEvent,
-  overrideDeps?: Partial<FlowDeps>,
+  deps: FlowDeps,
 ): Promise<FlowResult> {
-  const deps: FlowDeps = { ...defaultDeps(), ...overrideDeps };
   const baseLog = {
     commentId: event.commentId,
     igUserId: event.fromId,
@@ -241,7 +292,7 @@ async function handleFreshComment(
   const detailed = await resolveDetailedContent(deps, event.mediaId);
   const dmTemplate = await resolveTemplate(deps, event.mediaId, 'dm');
   const dmMessage = render(dmTemplate, {
-    pageHandle: config.IG_PAGE_HANDLE,
+    pageHandle: deps.pageHandle ?? '',
     detailedMessageContent: detailed,
     username: event.fromUsername ?? '',
   });
@@ -262,7 +313,7 @@ async function handleFreshComment(
   // 2) Post the public comment reply pointing them to their DM.
   const replyTemplate = await resolveTemplate(deps, event.mediaId, 'commentReply');
   const replyMessage = render(replyTemplate, {
-    pageHandle: config.IG_PAGE_HANDLE,
+    pageHandle: deps.pageHandle ?? '',
     username: event.fromUsername ?? '',
   });
   const replyId = await deps.ig.replyToComment(event.commentId, replyMessage);

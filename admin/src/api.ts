@@ -1,9 +1,13 @@
 import type {
+  AutomationStatus,
+  CredentialsInput,
   LogEntry,
   MediaItem,
   ReelConfig,
   ReelConfigInput,
   Templates,
+  User,
+  UserRole,
 } from './types';
 
 // When the panel is served by the Express backend (production/AWS), the API is
@@ -73,14 +77,47 @@ export const api = {
 
   health: () => request<{ status: string }>('/health', { auth: false }),
 
-  login: (email: string, password: string) =>
-    request<{ token: string; email: string; expiresAt: string }>('/auth/login', {
+  // Exchange a Google ID token (from Google Identity Services) for a session.
+  googleLogin: (credential: string) =>
+    request<{ token: string; expiresAt: string; user: User }>('/auth/google', {
       method: 'POST',
-      body: { email, password },
+      body: { credential },
       auth: false,
     }),
 
-  me: () => request<{ email: string; expiresAt: string }>('/auth/me'),
+  me: () => request<{ user: User }>('/auth/me'),
+
+  requestAutomation: (note?: string) =>
+    request<{ user: User }>('/auth/request-automation', {
+      method: 'POST',
+      body: { note },
+    }),
+
+  // ---- Admin: user management ----
+  listUsers: () => request<{ users: User[] }>('/users'),
+
+  setUserStatus: (id: string, status: AutomationStatus) =>
+    request<{ user: User }>(`/users/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: { status },
+    }),
+
+  setUserRole: (id: string, role: UserRole) =>
+    request<{ user: User }>(`/users/${encodeURIComponent(id)}/role`, {
+      method: 'PATCH',
+      body: { role },
+    }),
+
+  setUserCredentials: (id: string, credentials: CredentialsInput) =>
+    request<{ user: User }>(`/users/${encodeURIComponent(id)}/credentials`, {
+      method: 'PUT',
+      body: credentials,
+    }),
+
+  clearUserCredentials: (id: string) =>
+    request<{ user: User }>(`/users/${encodeURIComponent(id)}/credentials`, {
+      method: 'DELETE',
+    }),
 
   listMedia: () => request<{ items: MediaItem[] }>('/media'),
 

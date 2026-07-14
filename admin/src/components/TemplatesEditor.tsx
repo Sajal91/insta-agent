@@ -55,10 +55,10 @@ export function TemplatesEditor() {
   return (
     <div>
       <div className="section-head">
-        <h2>Global default templates</h2>
+        <h2>Default templates</h2>
       </div>
       <div className="hint" style={{ marginBottom: 16 }}>
-        These are the fallbacks used when a post has no override. Placeholders:{' '}
+        Your account's fallbacks, used when a post has no override. Placeholders:{' '}
         <code className="inline">{'{{detailedMessageContent}}'}</code>,{' '}
         <code className="inline">{'{{pageHandle}}'}</code>,{' '}
         <code className="inline">{'{{username}}'}</code>.

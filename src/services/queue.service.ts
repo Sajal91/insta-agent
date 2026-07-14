@@ -1,5 +1,20 @@
 import { logger } from '../utils/logger';
-import { processCommentEvent, type CommentEvent } from './flow-engine.service';
+import {
+  buildProductionDeps,
+  processCommentEvent,
+  type CommentEvent,
+} from './flow-engine.service';
+import type { IgCredentials } from '../db/types';
+
+/**
+ * A queued unit of work: the normalized comment plus the tenant (owner) it
+ * belongs to and the resolved credentials to act with.
+ */
+export interface QueueItem {
+  event: CommentEvent;
+  ownerId: string;
+  credentials: IgCredentials;
+}
 
 /**
  * Minimal in-memory FIFO queue + single-worker runner for v1.
@@ -15,13 +30,20 @@ import { processCommentEvent, type CommentEvent } from './flow-engine.service';
  * (`enqueue`) is intentionally tiny so swapping the backend is low-risk.
  */
 class CommentQueue {
-  private queue: CommentEvent[] = [];
+  private queue: QueueItem[] = [];
   private processing = false;
   private draining: Promise<void> | null = null;
 
-  enqueue(event: CommentEvent): void {
-    this.queue.push(event);
-    logger.debug({ commentId: event.commentId, depth: this.queue.length }, 'Enqueued comment event');
+  enqueue(item: QueueItem): void {
+    this.queue.push(item);
+    logger.debug(
+      {
+        commentId: item.event.commentId,
+        ownerId: item.ownerId,
+        depth: this.queue.length,
+      },
+      'Enqueued comment event',
+    );
     void this.kick();
   }
 
@@ -41,19 +63,24 @@ class CommentQueue {
 
   private async drain(): Promise<void> {
     while (this.queue.length > 0) {
-      const event = this.queue.shift();
-      if (!event) break;
+      const item = this.queue.shift();
+      if (!item) break;
       try {
-        const result = await processCommentEvent(event);
+        const deps = buildProductionDeps(item.ownerId, item.credentials);
+        const result = await processCommentEvent(item.event, deps);
         logger.info(
-          { commentId: event.commentId, action: result.action },
+          {
+            commentId: item.event.commentId,
+            ownerId: item.ownerId,
+            action: result.action,
+          },
           'Processed comment event',
         );
       } catch (err) {
         // processCommentEvent already handles its own errors, but this is a
         // last-resort guard so a bug there can never kill the worker loop.
         logger.error(
-          { commentId: event.commentId, err: (err as Error).message },
+          { commentId: item.event.commentId, err: (err as Error).message },
           'Unhandled error in queue worker',
         );
       }

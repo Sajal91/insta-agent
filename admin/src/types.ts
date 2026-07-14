@@ -49,6 +49,43 @@ export interface Templates {
   [key: string]: string | undefined;
 }
 
+export type UserRole = 'user' | 'admin';
+export type AutomationStatus = 'none' | 'pending' | 'approved' | 'rejected';
+
+export interface CredentialSummary {
+  configured: boolean;
+  businessAccountId: string | null;
+  pageHandle: string | null;
+  source: 'env' | 'stored' | 'none';
+}
+
+export interface User {
+  id: string;
+  googleId: string;
+  email: string;
+  name: string;
+  picture: string | null;
+  role: UserRole;
+  status: AutomationStatus;
+  requestNote: string | null;
+  requestedAt: string | null;
+  approvedAt: string | null;
+  credentials: CredentialSummary;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CredentialsInput {
+  appId: string;
+  appSecret: string;
+  accessToken: string;
+  businessAccountId: string;
+  pageHandle: string;
+  verifyToken: string;
+  graphApiVersion?: string;
+  graphBaseUrl?: string;
+}
+
 export type ReelConfigInput = {
   reelId: string;
   enabled?: boolean;

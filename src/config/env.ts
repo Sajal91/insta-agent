@@ -12,11 +12,17 @@ const envSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
 
-  IG_APP_ID: z.string().min(1, 'IG_APP_ID is required'),
-  IG_APP_SECRET: z.string().min(1, 'IG_APP_SECRET is required'),
-  IG_ACCESS_TOKEN: z.string().min(1, 'IG_ACCESS_TOKEN is required'),
-  IG_BUSINESS_ACCOUNT_ID: z.string().min(1, 'IG_BUSINESS_ACCOUNT_ID is required'),
-  IG_PAGE_HANDLE: z.string().min(1, 'IG_PAGE_HANDLE is required'),
+  // ---- Instagram credentials for the ADMIN account only ----
+  // In the multi-tenant SaaS model these env vars are NOT global anymore: they
+  // belong exclusively to the admin's own Instagram account (the user whose
+  // email matches ADMIN_EMAIL). Every other user's credentials are entered by
+  // the admin through the panel and stored (encrypted) in MongoDB per-user.
+  // They are therefore optional — a fresh SaaS deploy can run without them.
+  IG_APP_ID: z.string().optional().default(''),
+  IG_APP_SECRET: z.string().optional().default(''),
+  IG_ACCESS_TOKEN: z.string().optional().default(''),
+  IG_BUSINESS_ACCOUNT_ID: z.string().optional().default(''),
+  IG_PAGE_HANDLE: z.string().optional().default(''),
   IG_GRAPH_API_VERSION: z.string().default('v21.0'),
 
   // API host. Use graph.instagram.com for "Instagram API with Instagram Login"
@@ -27,17 +33,29 @@ const envSchema = z.object({
     .url()
     .default('https://graph.instagram.com'),
 
-  IG_VERIFY_TOKEN: z.string().min(1, 'IG_VERIFY_TOKEN is required'),
+  // Webhook handshake token for the admin's own Meta app. Optional (each user
+  // brings their own verify token stored in the DB).
+  IG_VERIFY_TOKEN: z.string().optional().default(''),
 
   API_KEY: z.string().min(1, 'API_KEY is required'),
 
-  // ---- Admin login (the /auth/login page) ----
-  // Credentials for the single admin user. The email/password are the source of
-  // truth here in the env; on boot we persist only a scrypt hash of the password
-  // to MongoDB (never the plaintext).
+  // ---- Google Sign-In (OAuth) ----
+  // Everyone (including the admin) logs in with Google. The frontend obtains an
+  // ID token via Google Identity Services and posts it to /auth/google, which we
+  // verify with GOOGLE_CLIENT_ID. GOOGLE_CLIENT_SECRET is reserved for the
+  // server-side code flow (not required for the ID-token flow).
+  GOOGLE_CLIENT_ID: z.string().optional().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().optional().default(''),
+
+  // ---- Admin account ----
+  // Identifies which Google account is the platform admin / owner of the env
+  // Instagram credentials above. The matching user is auto-promoted to the admin
+  // role on login. (You can also promote users manually in the DB.)
   ADMIN_EMAIL: z.string().email('ADMIN_EMAIL must be a valid email'),
-  ADMIN_PASSWORD: z.string().min(8, 'ADMIN_PASSWORD must be at least 8 characters'),
-  // Secret used to sign admin session tokens (HMAC-SHA256). Keep it long/random.
+  // Retained for backwards-compat only; no longer used for login.
+  ADMIN_PASSWORD: z.string().optional(),
+  // Secret used to sign session tokens (HMAC-SHA256) AND derive the key that
+  // encrypts stored per-user credentials. Keep it long/random and stable.
   AUTH_SECRET: z.string().min(16, 'AUTH_SECRET must be at least 16 characters'),
   // How long an issued session token stays valid, in hours.
   AUTH_TOKEN_TTL_HOURS: z.coerce.number().positive().default(12),
@@ -118,8 +136,8 @@ export function getProductionConfigIssues(cfg: AppConfig = config): string[] {
   if (/change-me/i.test(cfg.API_KEY)) {
     issues.push('API_KEY is still a placeholder — set a strong random value.');
   }
-  if (/change-me/i.test(cfg.ADMIN_PASSWORD)) {
-    issues.push('ADMIN_PASSWORD is still a placeholder — set a real password.');
+  if (!cfg.GOOGLE_CLIENT_ID) {
+    issues.push('GOOGLE_CLIENT_ID is not set — Google sign-in will not work.');
   }
 
   // Wide-open CORS in production is risky for a credentialed admin panel.

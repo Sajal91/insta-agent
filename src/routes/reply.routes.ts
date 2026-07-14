@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { config } from '../config/env';
-import { requireAuth } from '../middleware/auth';
+import { requireApproved } from '../middleware/auth';
 import { asyncHandler, formatZodError } from '../utils/http';
-import { instagramService } from '../services/instagram.service';
+import { createInstagramClient } from '../services/instagram.service';
+import { resolveCredentials } from '../services/credentials.service';
 import { render } from '../services/template.service';
 import { reelsRepo } from '../db/repositories/reels.repo';
 import { templatesRepo } from '../db/repositories/templates.repo';
@@ -11,7 +11,7 @@ import { flowStateRepo } from '../db/repositories/flow-state.repo';
 import { logsRepo } from '../db/repositories/logs.repo';
 
 export const replyRouter = Router();
-replyRouter.use(requireAuth);
+replyRouter.use(requireApproved);
 
 const manualSchema = z.object({
   commentId: z.string().min(1),
@@ -22,23 +22,28 @@ const manualSchema = z.object({
 });
 
 async function resolveTemplate(
+  ownerId: string,
   reelId: string | undefined,
   which: 'dm' | 'commentReply',
 ): Promise<string> {
-  const reel = reelId ? await reelsRepo.get(reelId) : null;
+  const reel = reelId ? await reelsRepo.get(ownerId, reelId) : null;
   const override = which === 'dm' ? reel?.dmTemplate : reel?.commentReplyTemplate;
   if (override?.trim()) return override;
   return (
     (await templatesRepo.get(
+      ownerId,
       which === 'dm' ? 'DM_TEMPLATE' : 'COMMENT_REPLY_TEMPLATE',
     )) ?? ''
   );
 }
 
-async function resolveDetailed(reelId: string | undefined): Promise<string> {
-  const reel = reelId ? await reelsRepo.get(reelId) : null;
+async function resolveDetailed(
+  ownerId: string,
+  reelId: string | undefined,
+): Promise<string> {
+  const reel = reelId ? await reelsRepo.get(ownerId, reelId) : null;
   if (reel?.detailedMessageContent?.trim()) return reel.detailedMessageContent;
-  return (await templatesRepo.get('DETAILED_MESSAGE_CONTENT')) ?? '';
+  return (await templatesRepo.get(ownerId, 'DETAILED_MESSAGE_CONTENT')) ?? '';
 }
 
 /**
@@ -54,13 +59,24 @@ replyRouter.post(
       res.status(400).json(formatZodError(parsed.error));
       return;
     }
+    const ownerId = req.user!._id.toString();
+    const creds = resolveCredentials(req.user!);
+    if (!creds) {
+      res.status(409).json({
+        error:
+          'No Instagram credentials configured for your account yet. Please contact the admin.',
+      });
+      return;
+    }
+    const ig = createInstagramClient(creds);
+
     const { commentId, dryRun } = parsed.data;
     let { reelId, igUserId } = parsed.data;
 
     // Fill missing context from the Graph API (best-effort).
     if (!reelId || !igUserId) {
       try {
-        const comment = await instagramService.getComment(commentId);
+        const comment = await ig.getComment(commentId);
         reelId = reelId ?? comment.media?.id;
         igUserId = igUserId ?? comment.from?.id;
       } catch {
@@ -68,24 +84,26 @@ replyRouter.post(
       }
     }
 
-    const dmMessage = render(await resolveTemplate(reelId, 'dm'), {
-      pageHandle: config.IG_PAGE_HANDLE,
-      detailedMessageContent: await resolveDetailed(reelId),
+    const dmMessage = render(await resolveTemplate(ownerId, reelId, 'dm'), {
+      pageHandle: creds.pageHandle,
+      detailedMessageContent: await resolveDetailed(ownerId, reelId),
     });
-    const replyMessage = render(await resolveTemplate(reelId, 'commentReply'), {
-      pageHandle: config.IG_PAGE_HANDLE,
-    });
+    const replyMessage = render(
+      await resolveTemplate(ownerId, reelId, 'commentReply'),
+      { pageHandle: creds.pageHandle },
+    );
 
     if (dryRun) {
       res.json({ dryRun: true, commentId, dmMessage, replyMessage });
       return;
     }
 
-    const messageId = await instagramService.sendPrivateReply(commentId, dmMessage);
-    const replyId = await instagramService.replyToComment(commentId, replyMessage);
+    const messageId = await ig.sendPrivateReply(commentId, dmMessage);
+    const replyId = await ig.replyToComment(commentId, replyMessage);
 
     if (igUserId && reelId) {
       await flowStateRepo.upsert({
+        ownerId,
         igUserId,
         commentId,
         reelId,
@@ -94,6 +112,7 @@ replyRouter.post(
     }
 
     await logsRepo.add({
+      ownerId,
       commentId,
       igUserId: igUserId ?? null,
       reelId: reelId ?? null,

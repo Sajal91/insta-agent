@@ -1,7 +1,23 @@
 import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
+import type { WithId } from 'mongodb';
 import { config } from '../config/env';
 import { verifyToken } from '../utils/token';
+import { usersRepo } from '../db/repositories/users.repo';
+import type { UserDoc } from '../db/types';
+
+/**
+ * Express augmentation: the authenticated user (loaded from the session token)
+ * is stashed on the request so downstream handlers can scope by tenant.
+ */
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: WithId<UserDoc>;
+    }
+  }
+}
 
 /** True if the provided value matches the configured API key (constant-time). */
 function isValidApiKey(provided: string): boolean {
@@ -18,43 +34,82 @@ function bearerToken(req: Request): string | null {
 }
 
 /**
- * Simple API-key gate for the internal config/admin routes. Client sends the
- * key in the `x-api-key` header. Constant-time compare to avoid leaking the
- * key length/prefix via timing.
+ * Resolve the acting user from either a session token (Authorization: Bearer,
+ * issued by /auth/google) or the static x-api-key (which acts as the admin).
+ * Returns null when no valid identity is present.
  */
-export function requireApiKey(
+async function resolveUser(req: Request): Promise<WithId<UserDoc> | null> {
+  const token = bearerToken(req);
+  if (token) {
+    const payload = verifyToken(token);
+    if (payload) {
+      const user = await usersRepo.findById(payload.sub);
+      if (user) return user;
+    }
+  }
+
+  // Programmatic clients may use the API key; it maps to the admin account.
+  if (isValidApiKey(req.get('x-api-key') ?? '')) {
+    return usersRepo.findByEmail(config.ADMIN_EMAIL);
+  }
+
+  return null;
+}
+
+/** Require a valid, signed-in user. Populates req.user. */
+export async function requireAuth(
   req: Request,
   res: Response,
   next: NextFunction,
-): void {
-  if (!isValidApiKey(req.get('x-api-key') ?? '')) {
+): Promise<void> {
+  const user = await resolveUser(req);
+  if (!user) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
+  req.user = user;
+  next();
+}
+
+/** Require an authenticated admin. */
+export async function requireAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const user = await resolveUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  if (user.role !== 'admin') {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
+  req.user = user;
   next();
 }
 
 /**
- * Gate that accepts EITHER a valid admin session token (Authorization: Bearer
- * <token>, issued by POST /auth/login) OR the static `x-api-key`. This lets the
- * admin panel authenticate via login while programmatic clients keep using the
- * API key.
+ * Require an authenticated user who is allowed to operate the automation:
+ * either an admin, or a regular user whose request has been approved.
  */
-export function requireAuth(
+export async function requireApproved(
   req: Request,
   res: Response,
   next: NextFunction,
-): void {
-  const token = bearerToken(req);
-  if (token && verifyToken(token)) {
-    next();
+): Promise<void> {
+  const user = await resolveUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-
-  if (isValidApiKey(req.get('x-api-key') ?? '')) {
-    next();
+  if (user.role !== 'admin' && user.status !== 'approved') {
+    res
+      .status(403)
+      .json({ error: 'Your automation access has not been approved yet' });
     return;
   }
-
-  res.status(401).json({ error: 'Unauthorized' });
+  req.user = user;
+  next();
 }

@@ -1,14 +1,13 @@
 import { MongoClient, type Db, type Collection } from 'mongodb';
 import { config } from '../config/env';
 import { logger } from '../utils/logger';
-import { hashPassword, verifyPassword } from '../utils/password';
 import type {
-  AdminUserDoc,
   FlowStateDoc,
   LogDoc,
   ProcessedCommentDoc,
   ReelConfigDoc,
   TemplateDoc,
+  UserDoc,
 } from './types';
 
 /**
@@ -25,8 +24,19 @@ export const COLLECTIONS = {
   flowStates: 'flow_states',
   templates: 'templates',
   logs: 'logs',
-  adminUsers: 'admin_users',
+  users: 'users',
 } as const;
+
+/**
+ * Sentinel "owner" for the platform-wide default templates. Per-user templates
+ * fall back to this owner's values when a user hasn't overridden a given key.
+ */
+export const GLOBAL_TEMPLATE_OWNER = '__global__';
+
+/** Build the composite _id used for template documents. */
+export function templateId(ownerId: string, key: string): string {
+  return `${ownerId}::${key}`;
+}
 
 export async function connectDb(): Promise<Db> {
   if (db) return db;
@@ -56,7 +66,6 @@ export async function connectDb(): Promise<Db> {
 
   await ensureIndexes(db);
   await seedDefaultTemplates(db);
-  await seedAdminUser(db);
 
   logger.info(
     { db: config.MONGODB_DB, srv: isSrv },
@@ -123,40 +132,57 @@ export const collections = {
   logs(): Collection<LogDoc> {
     return getDb().collection<LogDoc>(COLLECTIONS.logs);
   },
-  adminUsers(): Collection<AdminUserDoc> {
-    return getDb().collection<AdminUserDoc>(COLLECTIONS.adminUsers);
+  users(): Collection<UserDoc> {
+    return getDb().collection<UserDoc>(COLLECTIONS.users);
   },
 };
 
 async function ensureIndexes(database: Db): Promise<void> {
-  // One open flow per (user, reel).
+  // One open flow per (owner, commenter, reel).
   await database
     .collection(COLLECTIONS.flowStates)
-    .createIndex({ igUserId: 1, reelId: 1 }, { unique: true });
-  await database.collection(COLLECTIONS.flowStates).createIndex({ igUserId: 1 });
-  await database.collection(COLLECTIONS.flowStates).createIndex({ stage: 1 });
+    .createIndex({ ownerId: 1, igUserId: 1, reelId: 1 }, { unique: true });
+  await database
+    .collection(COLLECTIONS.flowStates)
+    .createIndex({ ownerId: 1, igUserId: 1 });
 
-  // Logs are read newest-first and filtered by comment.
-  await database.collection(COLLECTIONS.logs).createIndex({ createdAt: -1 });
-  await database.collection(COLLECTIONS.logs).createIndex({ commentId: 1 });
+  // Reel configs and processed comments are filtered per-tenant.
+  await database.collection(COLLECTIONS.reelConfigs).createIndex({ ownerId: 1 });
+  await database
+    .collection(COLLECTIONS.processedComments)
+    .createIndex({ ownerId: 1 });
+
+  // Logs are read newest-first, scoped per-tenant.
+  await database.collection(COLLECTIONS.logs).createIndex({ ownerId: 1, createdAt: -1 });
+
+  // Users: unique by Google id + email; route webhooks by business account id
+  // and verify handshakes by the per-user verify token.
+  await database.collection(COLLECTIONS.users).createIndex({ googleId: 1 }, { unique: true });
+  await database.collection(COLLECTIONS.users).createIndex({ email: 1 }, { unique: true });
+  await database
+    .collection(COLLECTIONS.users)
+    .createIndex(
+      { 'igCredentials.businessAccountId': 1 },
+      { sparse: true },
+    );
+  await database
+    .collection(COLLECTIONS.users)
+    .createIndex({ 'igCredentials.verifyToken': 1 }, { sparse: true });
 }
 
 /**
- * Seed the default global templates only if missing (never clobber edits made
- * via PUT /templates). Uses _id = template key. Also removes obsolete keys from
- * the previous two-step follow-gate design.
+ * Seed the platform-wide default templates (under the GLOBAL owner) only if
+ * missing — never clobber edits. Per-user templates fall back to these.
  */
 async function seedDefaultTemplates(database: Db): Promise<void> {
   const defaults: Record<string, string> = {
     DM_TEMPLATE:
       `Hi! 👋
 
-Thanks for your interest in our WhatsApp AI Agent.
+Thanks for your interest.
 
 You can book a free demo here:
 [Your Demo Booking Link]
-
-In the demo, I'll show you how the agent can automate content creation, approvals, and social media posting for your business.
 
 Looking forward to speaking with you`,
     COMMENT_REPLY_TEMPLATE:
@@ -173,51 +199,18 @@ Looking forward to speaking with you`,
   await Promise.all(
     Object.entries(defaults).map(([key, value]) =>
       coll.updateOne(
-        { _id: key },
-        { $setOnInsert: { _id: key, value, updatedAt: now } },
+        { _id: templateId(GLOBAL_TEMPLATE_OWNER, key) },
+        {
+          $setOnInsert: {
+            _id: templateId(GLOBAL_TEMPLATE_OWNER, key),
+            ownerId: GLOBAL_TEMPLATE_OWNER,
+            key,
+            value,
+            updatedAt: now,
+          },
+        },
         { upsert: true },
       ),
     ),
   );
-
-  // Clean up template keys from the retired follow-gate flow.
-  await coll.deleteMany({
-    _id: {
-      $in: [
-        'STEP_1_TEMPLATE',
-        'STEP_2_TEMPLATE',
-        'NUDGE_TEMPLATE',
-        'DEFAULT_CONFIRMATION_KEYWORD',
-      ],
-    },
-  });
-}
-
-/**
- * Sync the admin login account from the environment into the database. We store
- * only a scrypt hash of ADMIN_PASSWORD — never the plaintext. If the env email
- * changed, any stale admin rows are removed so exactly one admin exists. The
- * hash is only rewritten when the password actually changed, keeping the row
- * stable across restarts.
- */
-async function seedAdminUser(database: Db): Promise<void> {
-  const email = config.ADMIN_EMAIL.trim().toLowerCase();
-  const coll = database.collection<AdminUserDoc>(COLLECTIONS.adminUsers);
-
-  // Ensure there's only one admin, matching the current env email.
-  await coll.deleteMany({ _id: { $ne: email } });
-
-  const existing = await coll.findOne({ _id: email });
-  const now = new Date().toISOString();
-
-  if (existing && verifyPassword(config.ADMIN_PASSWORD, existing.passwordHash)) {
-    return;
-  }
-
-  await coll.updateOne(
-    { _id: email },
-    { $set: { passwordHash: hashPassword(config.ADMIN_PASSWORD), updatedAt: now } },
-    { upsert: true },
-  );
-  logger.info({ email }, 'Admin credentials synced to database');
 }
