@@ -188,11 +188,11 @@ export function App() {
         )}
         <aside
           className={cx(
-            'fixed top-0 left-0 bottom-0 w-[264px] z-40 flex flex-col px-4 py-5 bg-surface border-r border-border transition-transform duration-240 ease-out max-[900px]:-translate-x-full max-[900px]:shadow-lg',
+            'fixed top-0 left-0 bottom-0 w-66 z-40 flex flex-col px-4 py-5 bg-surface border-r border-border transition-transform duration-240 ease-out max-[900px]:-translate-x-full max-[900px]:shadow-lg',
             menuOpen && 'max-[900px]:translate-x-0',
           )}
         >
-          <div className="flex items-center gap-2.5 pt-1.5 px-2 pb-[18px]">
+          <div className="flex items-center gap-2.5 pt-1.5 px-2 pb-4.5">
             <BrandMark size={38} />
             <BrandName />
           </div>
@@ -222,7 +222,7 @@ export function App() {
           </div>
         </aside>
 
-        <div className="flex-1 min-w-0 flex flex-col ml-[264px] max-[900px]:ml-0">
+        <div className="flex-1 min-w-0 flex flex-col ml-66 max-[900px]:ml-0">
           <header
             className={cx(
               'sticky top-0 z-30 h-16 flex items-center justify-between gap-4 px-7 max-[620px]:px-4 border-b border-transparent transition-[background-color,border-color,backdrop-filter] duration-240',
@@ -258,11 +258,11 @@ export function App() {
 
               <div className="relative">
                 <button
-                  className="flex items-center gap-2 py-[5px] pl-[5px] pr-2.5 rounded-pill border border-border bg-surface text-[13px] text-text cursor-pointer transition-[box-shadow,border-color] duration-150 hover:shadow-sm hover:border-border-strong"
+                  className="flex items-center gap-2 py-1.25 pl-1.25 pr-2.5 rounded-pill border border-border bg-surface text-[13px] text-text cursor-pointer transition-[box-shadow,border-color] duration-150 hover:shadow-sm hover:border-border-strong"
                   onClick={() => setUserMenu((v) => !v)}
                 >
                   <Avatar user={user} />
-                  <span className="max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">
+                  <span className="max-w-30 overflow-hidden text-ellipsis whitespace-nowrap">
                     {user.name?.split(' ')[0] ?? 'Account'}
                   </span>
                 </button>
@@ -274,7 +274,7 @@ export function App() {
                         onClick={() => setUserMenu(false)}
                       />
                       <motion.div
-                        className="absolute right-0 top-[calc(100%+8px)] min-w-[240px] z-50 bg-surface border border-border rounded-card shadow-lg p-2"
+                        className="absolute right-0 top-[calc(100%+8px)] min-w-60 z-50 bg-surface border border-border rounded-card shadow-lg p-2"
                         initial={{ opacity: 0, y: -6, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -6, scale: 0.98 }}
@@ -305,7 +305,7 @@ export function App() {
             </div>
           </header>
 
-          <main className="w-full max-w-[1240px] px-7 pt-6 pb-[72px] max-[620px]:px-4 max-[620px]:pt-4 max-[620px]:pb-14">
+          <main className="w-full px-7 pt-6 pb-18 max-[620px]:px-4 max-[620px]:pt-4 max-[620px]:pb-14">
             {!canAutomate && !isAdmin && activeTab === 'dashboard' ? (
               <motion.div {...fadeUp}>
                 <RequestAutomation user={user} onUpdated={setUser} />

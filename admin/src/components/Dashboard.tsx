@@ -82,7 +82,7 @@ function StatCard({
 }) {
   return (
     <motion.div
-      className="bg-surface border border-border rounded-card shadow-sm p-[22px] flex flex-col gap-3.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+      className="bg-surface border border-border rounded-card shadow-sm p-5.5 flex flex-col gap-3.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-lg"
       {...stagger(index)}
     >
       <div className="flex items-center justify-between">
@@ -221,7 +221,7 @@ export function Dashboard({
           ? [0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="bg-surface border border-border rounded-card shadow-sm p-[22px] flex flex-col gap-3.5"
+                className="bg-surface border border-border rounded-card shadow-sm p-5.5 flex flex-col gap-3.5"
               >
                 <Skeleton w={44} h={44} radius={12} />
                 <Skeleton w="60%" h={28} />
@@ -264,7 +264,7 @@ export function Dashboard({
       </div>
 
       {/* main grid */}
-      <div className="grid gap-5 items-start grid-cols-[1.6fr_1fr] max-[1100px]:grid-cols-1 mt-5">
+      <div className="grid gap-5 items-start grid-cols-2 max-[1100px]:grid-cols-1 mt-5">
         {/* left column */}
         <div className="flex flex-col gap-4">
           <motion.div className={card} {...fadeUp}>
@@ -386,7 +386,7 @@ export function Dashboard({
                     >
                       <span
                         className={cx(
-                          'flex items-center justify-center w-[34px] h-[34px] rounded-[10px] shrink-0',
+                          'flex items-center justify-center w-8.5 h-8.5 rounded-[10px] shrink-0',
                           iconCls,
                         )}
                       >
@@ -415,7 +415,7 @@ export function Dashboard({
           <motion.div
             className={cx(
               IG_SOFT_CARD,
-              'border border-border rounded-card shadow-sm p-[22px]',
+              'border border-border rounded-card shadow-sm p-5.5',
             )}
             {...fadeUp}
           >
@@ -434,8 +434,8 @@ export function Dashboard({
             <div className="text-[13px] text-muted mt-1">
               Unlimited automations & AI replies for your account.
             </div>
-            <div className="mt-[18px]">
-              <div className="flex flex-col gap-2 mb-[18px]">
+            <div className="mt-4.5">
+              <div className="flex flex-col gap-2 mb-4.5">
                 <div className="flex justify-between text-[13px]">
                   <span className="text-muted font-medium">Monthly replies</span>
                   <span className="font-semibold">
@@ -482,7 +482,7 @@ export function Dashboard({
               <h3 className={cx(heading, 'text-base')}>Connected account</h3>
             </div>
             <div className="flex items-center gap-3">
-              <span className={cx(statIcon.ig, 'w-[46px] h-[46px]')}>
+              <span className={cx(statIcon.ig, 'w-11.5 h-11.5')}>
                 <AtSign size={22} />
               </span>
               <div className="flex-1 min-w-0">
@@ -568,7 +568,7 @@ function QuickAction({
       className="flex items-center gap-3 p-4 rounded-btn border border-border bg-surface cursor-pointer text-left transition duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-accent"
       onClick={onClick}
     >
-      <span className="flex items-center justify-center w-[38px] h-[38px] rounded-[10px] bg-accent-soft text-accent shrink-0">
+      <span className="flex items-center justify-center w-9.5 h-9.5 rounded-[10px] bg-accent-soft text-accent shrink-0">
         <Icon size={20} />
       </span>
       <span>
