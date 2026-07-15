@@ -168,6 +168,13 @@ async function ensureIndexes(database: Db): Promise<void> {
   await database
     .collection(COLLECTIONS.users)
     .createIndex({ 'igCredentials.verifyToken': 1 }, { sparse: true });
+  // Route Razorpay subscription webhooks back to the owning user.
+  await database
+    .collection(COLLECTIONS.users)
+    .createIndex(
+      { 'subscription.razorpaySubscriptionId': 1 },
+      { sparse: true },
+    );
 }
 
 /**

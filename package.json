@@ -33,6 +33,7 @@
     "mongodb": "^7.4.0",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
+    "razorpay": "^2.9.6",
     "zod": "^3.24.1"
   },
   "devDependencies": {

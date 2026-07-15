@@ -2,14 +2,16 @@ import { ObjectId, type WithId } from 'mongodb';
 import { collections } from '../index';
 import { config } from '../../config/env';
 import { decryptSecret, encryptSecret } from '../../utils/crypto';
-import type {
-  AutomationStatus,
-  CredentialSummary,
-  IgCredentials,
-  StoredIgCredentials,
-  User,
-  UserDoc,
-  UserRole,
+import {
+  emptySubscription,
+  type AutomationStatus,
+  type CredentialSummary,
+  type IgCredentials,
+  type StoredIgCredentials,
+  type Subscription,
+  type User,
+  type UserDoc,
+  type UserRole,
 } from '../types';
 
 /** Input used to persist a user's Instagram credentials (admin-provided). */
@@ -103,6 +105,7 @@ export function mapUser(doc: WithId<UserDoc>): User {
     requestedAt: doc.requestedAt,
     approvedAt: doc.approvedAt,
     credentials: credentialSummary(doc),
+    subscription: doc.subscription ?? emptySubscription(),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -145,6 +148,15 @@ export const usersRepo = {
     return collections
       .users()
       .findOne({ 'igCredentials.verifyToken': verifyToken });
+  },
+
+  /** Find the user who owns a given Razorpay subscription id (webhook routing). */
+  async findBySubscriptionId(
+    razorpaySubscriptionId: string,
+  ): Promise<WithId<UserDoc> | null> {
+    return collections
+      .users()
+      .findOne({ 'subscription.razorpaySubscriptionId': razorpaySubscriptionId });
   },
 
   /**
@@ -191,6 +203,7 @@ export const usersRepo = {
       requestedAt: null,
       approvedAt: null,
       igCredentials: null,
+      subscription: emptySubscription(),
       createdAt: now,
       updatedAt: now,
     };
@@ -282,5 +295,67 @@ export const usersRepo = {
     );
     const doc = await coll.findOne({ _id: new ObjectId(id) });
     return doc ? mapUser(doc) : null;
+  },
+
+  /**
+   * Record that a Razorpay subscription (and customer) has been created for a
+   * user. Moves the subscription into the `created` state, awaiting the mandate
+   * authorization + first charge (confirmed later via webhook).
+   */
+  async startSubscription(
+    id: string,
+    params: {
+      razorpaySubscriptionId: string;
+      razorpayCustomerId: string | null;
+      planId: string;
+    },
+  ): Promise<User | null> {
+    if (!ObjectId.isValid(id)) return null;
+    const now = new Date().toISOString();
+    const coll = collections.users();
+    const doc = await coll.findOne({ _id: new ObjectId(id) });
+    if (!doc) return null;
+    const existing = doc.subscription ?? emptySubscription();
+    const subscription: Subscription = {
+      ...existing,
+      status: 'created',
+      razorpaySubscriptionId: params.razorpaySubscriptionId,
+      razorpayCustomerId: params.razorpayCustomerId,
+      planId: params.planId,
+      updatedAt: now,
+    };
+    await coll.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { subscription, updatedAt: now } },
+    );
+    const updated = await coll.findOne({ _id: new ObjectId(id) });
+    return updated ? mapUser(updated) : null;
+  },
+
+  /**
+   * Apply a partial subscription update (used by the Razorpay webhook handler as
+   * events arrive). Merges onto the current subscription and stamps updatedAt.
+   */
+  async updateSubscription(
+    id: string,
+    patch: Partial<Subscription>,
+  ): Promise<User | null> {
+    if (!ObjectId.isValid(id)) return null;
+    const now = new Date().toISOString();
+    const coll = collections.users();
+    const doc = await coll.findOne({ _id: new ObjectId(id) });
+    if (!doc) return null;
+    const existing = doc.subscription ?? emptySubscription();
+    const subscription: Subscription = {
+      ...existing,
+      ...patch,
+      updatedAt: now,
+    };
+    await coll.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { subscription, updatedAt: now } },
+    );
+    const updated = await coll.findOne({ _id: new ObjectId(id) });
+    return updated ? mapUser(updated) : null;
   },
 };

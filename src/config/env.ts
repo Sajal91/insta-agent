@@ -60,6 +60,21 @@ const envSchema = z.object({
   // How long an issued session token stays valid, in hours.
   AUTH_TOKEN_TTL_HOURS: z.coerce.number().positive().default(12),
 
+  // ---- Razorpay (monthly subscriptions) ----
+  // Key id/secret from the Razorpay dashboard (test or live). The monthly plan
+  // is created once in the dashboard and its id set as RAZORPAY_PLAN_ID. The
+  // setup fee is charged as a one-time addon on the first invoice.
+  RAZORPAY_KEY_ID: z.string().optional().default(''),
+  RAZORPAY_KEY_SECRET: z.string().optional().default(''),
+  // Secret configured on the Razorpay webhook (used to verify signatures).
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
+  // The monthly Plan id (e.g. plan_XXXXXXXX) created in the dashboard.
+  RAZORPAY_PLAN_ID: z.string().optional().default(''),
+  // One-time setup fee, in the smallest currency unit (paise for INR).
+  RAZORPAY_SETUP_FEE_PAISE: z.coerce.number().int().nonnegative().default(0),
+  // ISO currency code used for the setup-fee addon (must match the plan).
+  RAZORPAY_CURRENCY: z.string().default('INR'),
+
   // Allowed origin(s) for the admin panel (CORS). Comma-separated, or "*".
   CORS_ORIGIN: z.string().default('*'),
 
@@ -106,6 +121,17 @@ export function loadConfig(): AppConfig {
 
 export const config = loadConfig();
 
+/**
+ * True when Razorpay is fully configured (keys + plan). Billing endpoints are
+ * disabled (return a clear error) when this is false, so the app still boots
+ * without payment configured.
+ */
+export function isRazorpayConfigured(cfg: AppConfig = config): boolean {
+  return Boolean(
+    cfg.RAZORPAY_KEY_ID && cfg.RAZORPAY_KEY_SECRET && cfg.RAZORPAY_PLAN_ID,
+  );
+}
+
 /** True when running with NODE_ENV=production. */
 export const isProduction = config.NODE_ENV === 'production';
 /** True when running the local dev environment. */
@@ -144,6 +170,24 @@ export function getProductionConfigIssues(cfg: AppConfig = config): string[] {
   if (cfg.CORS_ORIGIN === '*') {
     issues.push(
       'CORS_ORIGIN is "*" in production — restrict it to your admin panel origin(s).',
+    );
+  }
+
+  // If Razorpay is partially configured, surface the gap; a webhook without a
+  // secret cannot be verified and would be rejected.
+  const anyRazorpay =
+    cfg.RAZORPAY_KEY_ID ||
+    cfg.RAZORPAY_KEY_SECRET ||
+    cfg.RAZORPAY_PLAN_ID ||
+    cfg.RAZORPAY_WEBHOOK_SECRET;
+  if (anyRazorpay && !isRazorpayConfigured(cfg)) {
+    issues.push(
+      'Razorpay is partially configured — set RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_PLAN_ID (billing is disabled until all are present).',
+    );
+  }
+  if (isRazorpayConfigured(cfg) && !cfg.RAZORPAY_WEBHOOK_SECRET) {
+    issues.push(
+      'RAZORPAY_WEBHOOK_SECRET is not set — subscription webhooks cannot be verified.',
     );
   }
 

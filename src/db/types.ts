@@ -47,6 +47,68 @@ export type UserRole = 'user' | 'admin';
  */
 export type AutomationStatus = 'none' | 'pending' | 'approved' | 'rejected';
 
+/**
+ * Billing/subscription lifecycle, tracked in parallel to the admin-review
+ * `status` above. Automation access requires BOTH status === 'approved' and a
+ * subscription in the "active set" (active or past_due).
+ *
+ *   none      – never subscribed
+ *   created   – a Razorpay subscription was created, awaiting mandate + first charge
+ *   active    – paid and running
+ *   past_due  – a scheduled charge failed; Razorpay is retrying (grace period)
+ *   paused    – access suspended (retries exhausted / paused / cancelled by us)
+ *   cancelled – subscription ended
+ */
+export type SubscriptionStatus =
+  | 'none'
+  | 'created'
+  | 'active'
+  | 'past_due'
+  | 'paused'
+  | 'cancelled';
+
+/** Per-user Razorpay subscription state stored on the user document. */
+export interface Subscription {
+  status: SubscriptionStatus;
+  razorpaySubscriptionId: string | null;
+  razorpayCustomerId: string | null;
+  planId: string | null;
+  /** Whether the one-time setup fee (first-invoice addon) has been charged. */
+  setupFeePaid: boolean;
+  /** End of the current paid cycle / next auto-charge date (ISO), if known. */
+  currentPeriodEnd: string | null;
+  lastPaymentId: string | null;
+  /** Timestamp of the last processed Razorpay event (for idempotency). */
+  lastEventAt: string | null;
+  updatedAt: string | null;
+}
+
+/** A fresh, never-subscribed subscription record. */
+export function emptySubscription(): Subscription {
+  return {
+    status: 'none',
+    razorpaySubscriptionId: null,
+    razorpayCustomerId: null,
+    planId: null,
+    setupFeePaid: false,
+    currentPeriodEnd: null,
+    lastPaymentId: null,
+    lastEventAt: null,
+    updatedAt: null,
+  };
+}
+
+/** Statuses that grant automation access (active + retry grace). */
+export const ACTIVE_SUBSCRIPTION_STATUSES: readonly SubscriptionStatus[] = [
+  'active',
+  'past_due',
+];
+
+/** True when a subscription currently grants automation access. */
+export function isSubscriptionActive(sub: Subscription | null | undefined): boolean {
+  return sub ? ACTIVE_SUBSCRIPTION_STATUSES.includes(sub.status) : false;
+}
+
 /** Fully-resolved Instagram credentials used to talk to the Graph API. */
 export interface IgCredentials {
   appId: string;
@@ -87,6 +149,7 @@ export interface UserDoc {
   requestedAt: string | null;
   approvedAt: string | null;
   igCredentials: StoredIgCredentials | null;
+  subscription: Subscription;
   createdAt: string;
   updatedAt: string;
 }
@@ -173,6 +236,7 @@ export interface User {
   requestedAt: string | null;
   approvedAt: string | null;
   credentials: CredentialSummary;
+  subscription: Subscription;
   createdAt: string;
   updatedAt: string;
 }

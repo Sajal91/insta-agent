@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api, clearToken, getToken } from './api';
-import type { User } from './types';
+import { isSubscriptionActive, type User } from './types';
 import { Login } from './components/Login';
 import { PostsList } from './components/PostsList';
 import { CreatePost } from './components/CreatePost';
@@ -21,6 +21,7 @@ import { TemplatesEditor } from './components/TemplatesEditor';
 import { LogsView } from './components/LogsView';
 import { UsersAdmin } from './components/UsersAdmin';
 import { RequestAutomation } from './components/RequestAutomation';
+import { Billing } from './components/Billing';
 import { Dashboard } from './components/Dashboard';
 import {
   BrandMark,
@@ -149,7 +150,12 @@ export function App() {
   }
 
   const isAdmin = user.role === 'admin';
-  const canAutomate = isAdmin || user.status === 'approved';
+  const isApproved = user.status === 'approved';
+  const hasActiveSub = isSubscriptionActive(user.subscription);
+  const canAutomate = isAdmin || (isApproved && hasActiveSub);
+  // Approved but not yet paying -> show the billing paywall instead of the
+  // request flow (which handles none / pending / rejected).
+  const needsPayment = !isAdmin && isApproved && !hasActiveSub;
 
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
@@ -308,7 +314,11 @@ export function App() {
           <main className="w-full px-7 pt-6 pb-18 max-[620px]:px-4 max-[620px]:pt-4 max-[620px]:pb-14">
             {!canAutomate && !isAdmin && activeTab === 'dashboard' ? (
               <motion.div {...fadeUp}>
-                <RequestAutomation user={user} onUpdated={setUser} />
+                {needsPayment ? (
+                  <Billing user={user} onUpdated={setUser} />
+                ) : (
+                  <RequestAutomation user={user} onUpdated={setUser} />
+                )}
               </motion.div>
             ) : (
               <AnimatePresence mode="wait">

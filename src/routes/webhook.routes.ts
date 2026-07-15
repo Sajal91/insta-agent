@@ -1,12 +1,19 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
+import { isRazorpayConfigured } from '../config/env';
 import { logger } from '../utils/logger';
 import { commentQueue } from '../services/queue.service';
 import {
   findOwnerByBusinessAccountId,
   isKnownVerifyToken,
 } from '../services/credentials.service';
+import { usersRepo } from '../db/repositories/users.repo';
+import { isSubscriptionActive, type Subscription } from '../db/types';
+import {
+  mapRazorpayStatus,
+  verifyWebhookSignature,
+} from '../services/razorpay.service';
 import type { CommentEvent } from '../services/flow-engine.service';
 
 export const webhookRouter = Router();
@@ -123,6 +130,20 @@ webhookRouter.post('/instagram', (req, res) => {
         continue;
       }
 
+      // Pause automation for tenants without an active subscription (unless the
+      // owner is the admin, or billing isn't configured on this deployment).
+      if (
+        isRazorpayConfigured() &&
+        owner.user.role !== 'admin' &&
+        !isSubscriptionActive(owner.user.subscription)
+      ) {
+        logger.info(
+          { businessAccountId, ownerId: owner.ownerId },
+          'Tenant subscription inactive — skipping automation for webhook entry',
+        );
+        continue;
+      }
+
       // Verify the signature with the resolving tenant's app secret.
       if (!signatureValid(raw, signatureHeader, owner.credentials.appSecret)) {
         logger.warn(
@@ -174,5 +195,134 @@ webhookRouter.post('/instagram', (req, res) => {
         });
       }
     }
+  })();
+});
+
+// ---- Razorpay subscription webhooks ----
+
+const razorpaySubscriptionEntitySchema = z
+  .object({
+    id: z.string(),
+    status: z.string(),
+    current_end: z.number().nullable().optional(),
+    charge_at: z.number().nullable().optional(),
+    customer_id: z.string().nullable().optional(),
+    notes: z.record(z.union([z.string(), z.number()])).optional(),
+  })
+  .passthrough();
+
+const razorpayWebhookSchema = z
+  .object({
+    event: z.string(),
+    created_at: z.number().optional(),
+    payload: z
+      .object({
+        subscription: z
+          .object({ entity: razorpaySubscriptionEntitySchema })
+          .optional(),
+        payment: z
+          .object({ entity: z.object({ id: z.string() }).passthrough() })
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+/**
+ * Receiver for Razorpay subscription webhooks. We verify the HMAC signature
+ * against the exact raw body (RAZORPAY_WEBHOOK_SECRET), then reconcile the
+ * user's subscription state. Webhooks are the source of truth for activation,
+ * renewals, retries and pausing on failed payments.
+ */
+webhookRouter.post('/razorpay', (req, res) => {
+  const raw = req.rawBody;
+  const signature = req.get('x-razorpay-signature');
+
+  if (!raw || !verifyWebhookSignature(raw, signature)) {
+    logger.warn('Razorpay webhook signature verification failed');
+    res.sendStatus(400);
+    return;
+  }
+
+  const parsed = razorpayWebhookSchema.safeParse(req.body);
+  if (!parsed.success) {
+    logger.warn(
+      { issues: parsed.error.issues },
+      'Unparseable Razorpay webhook body',
+    );
+    res.sendStatus(200);
+    return;
+  }
+
+  // ACK immediately; Razorpay retries on non-2xx.
+  res.sendStatus(200);
+
+  const { event, created_at: createdAt } = parsed.data;
+  const subEntity = parsed.data.payload.subscription?.entity;
+  const paymentId = parsed.data.payload.payment?.entity.id ?? null;
+
+  void (async () => {
+    if (!subEntity) {
+      logger.debug({ event }, 'Razorpay webhook without a subscription entity — ignoring');
+      return;
+    }
+
+    // Resolve the owning user: prefer the userId note we set on creation, then
+    // fall back to the stored subscription id.
+    const noteUserId =
+      subEntity.notes && typeof subEntity.notes.userId === 'string'
+        ? (subEntity.notes.userId as string)
+        : null;
+    const user =
+      (noteUserId ? await usersRepo.findById(noteUserId) : null) ??
+      (await usersRepo.findBySubscriptionId(subEntity.id));
+
+    if (!user) {
+      logger.warn(
+        { event, subscriptionId: subEntity.id },
+        'Razorpay webhook for unknown subscription — ignoring',
+      );
+      return;
+    }
+
+    // Idempotency / ordering: skip events older than the last one we applied.
+    const eventAtMs = createdAt ? createdAt * 1000 : Date.now();
+    const lastEventAt = user.subscription?.lastEventAt
+      ? Date.parse(user.subscription.lastEventAt)
+      : 0;
+    if (eventAtMs < lastEventAt) {
+      logger.debug(
+        { event, subscriptionId: subEntity.id },
+        'Ignoring stale Razorpay webhook event',
+      );
+      return;
+    }
+
+    const patch: Partial<Subscription> = {
+      status: mapRazorpayStatus(subEntity.status),
+      razorpaySubscriptionId: subEntity.id,
+      lastEventAt: new Date(eventAtMs).toISOString(),
+    };
+    if (subEntity.customer_id) patch.razorpayCustomerId = subEntity.customer_id;
+    const periodEnd = subEntity.current_end ?? subEntity.charge_at ?? null;
+    if (periodEnd) patch.currentPeriodEnd = new Date(periodEnd * 1000).toISOString();
+
+    // A successful charge confirms the setup fee (billed on the first invoice)
+    // and records the payment.
+    if (event === 'subscription.charged') {
+      patch.setupFeePaid = true;
+      if (paymentId) patch.lastPaymentId = paymentId;
+    }
+
+    await usersRepo.updateSubscription(user._id.toString(), patch);
+    logger.info(
+      {
+        event,
+        subscriptionId: subEntity.id,
+        userId: user._id.toString(),
+        status: patch.status,
+      },
+      'Applied Razorpay subscription webhook',
+    );
   })();
 });

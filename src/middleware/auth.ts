@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { WithId } from 'mongodb';
-import { config } from '../config/env';
+import { config, isRazorpayConfigured } from '../config/env';
 import { verifyToken } from '../utils/token';
 import { usersRepo } from '../db/repositories/users.repo';
-import type { UserDoc } from '../db/types';
+import { isSubscriptionActive, type UserDoc } from '../db/types';
 
 /**
  * Express augmentation: the authenticated user (loaded from the session token)
@@ -92,7 +92,9 @@ export async function requireAdmin(
 
 /**
  * Require an authenticated user who is allowed to operate the automation:
- * either an admin, or a regular user whose request has been approved.
+ * either an admin, or a regular user whose request has been approved AND who has
+ * an active subscription. The subscription gate only applies when Razorpay is
+ * configured, so deployments without billing keep the approval-only behaviour.
  */
 export async function requireApproved(
   req: Request,
@@ -104,11 +106,21 @@ export async function requireApproved(
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  if (user.role !== 'admin' && user.status !== 'approved') {
-    res
-      .status(403)
-      .json({ error: 'Your automation access has not been approved yet' });
-    return;
+  if (user.role !== 'admin') {
+    if (user.status !== 'approved') {
+      res
+        .status(403)
+        .json({ error: 'Your automation access has not been approved yet' });
+      return;
+    }
+    if (isRazorpayConfigured() && !isSubscriptionActive(user.subscription)) {
+      res.status(402).json({
+        error:
+          'Your subscription is not active. Please complete payment to use the automation.',
+        code: 'subscription_required',
+      });
+      return;
+    }
   }
   req.user = user;
   next();

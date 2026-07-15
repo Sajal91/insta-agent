@@ -29,7 +29,7 @@ import {
   YAxis,
 } from 'recharts';
 import { api } from '../api';
-import type { LogEntry, MediaItem, User } from '../types';
+import type { LogEntry, MediaItem, SubscriptionStatus, User } from '../types';
 import { EmptyState, Skeleton, fadeUp, stagger } from './ui';
 import {
   IG_BG,
@@ -54,6 +54,33 @@ type NavKey =
   | 'templates'
   | 'logs'
   | 'users';
+
+const SUB_LABEL: Record<SubscriptionStatus, string> = {
+  none: 'Inactive',
+  created: 'Pending payment',
+  active: 'Active',
+  past_due: 'Payment due',
+  paused: 'Paused',
+  cancelled: 'Cancelled',
+};
+
+const SUB_BADGE: Record<SubscriptionStatus, string> = {
+  none: badge.default,
+  created: badge.kw,
+  active: badge.on,
+  past_due: badge.kw,
+  paused: badge.off,
+  cancelled: badge.off,
+};
+
+const SUB_DESC: Record<SubscriptionStatus, string> = {
+  none: 'No active subscription.',
+  created: 'Awaiting your first payment to activate.',
+  active: 'Your monthly subscription is active.',
+  past_due: 'A payment failed — we are retrying automatically.',
+  paused: 'Subscription paused due to a failed payment.',
+  cancelled: 'Your subscription has ended.',
+};
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -428,32 +455,42 @@ export function Dashboard({
               >
                 <Sparkles size={13} /> PRO
               </span>
-              <span className={badge.on}>Active</span>
+              {isAdmin ? (
+                <span className={badge.on}>Admin</span>
+              ) : (
+                <span className={SUB_BADGE[user.subscription.status] ?? badge.default}>
+                  {SUB_LABEL[user.subscription.status] ?? user.subscription.status}
+                </span>
+              )}
             </div>
             <h3 className={cx(heading, 'text-lg mt-4')}>InstaPilot Pro</h3>
             <div className="text-[13px] text-muted mt-1">
-              Unlimited automations & AI replies for your account.
+              {isAdmin
+                ? 'Unlimited automations & AI replies for your account.'
+                : SUB_DESC[user.subscription.status] ?? 'Monthly automation subscription.'}
             </div>
-            <div className="mt-4.5">
-              <div className="flex flex-col gap-2 mb-4.5">
-                <div className="flex justify-between text-[13px]">
-                  <span className="text-muted font-medium">Monthly replies</span>
-                  <span className="font-semibold">
-                    {stats.dms.toLocaleString()} / 10,000
-                  </span>
-                </div>
-                <div className="h-2 rounded-pill bg-surface-2 overflow-hidden">
-                  <span
-                    className={cx(
-                      'block h-full rounded-pill bg-size-[200%_100%] animate-gradient-slow',
-                      IG_BG,
-                    )}
-                    style={{
-                      width: `${Math.min(100, (stats.dms / 10000) * 100)}%`,
-                    }}
-                  />
-                </div>
+
+            {!isAdmin && user.subscription.status === 'past_due' && (
+              <div className={cx(banner.warn, 'mt-4 mb-0')}>
+                Your last payment failed. We're retrying — please ensure your
+                payment method has sufficient balance to avoid a pause.
               </div>
+            )}
+
+            {!isAdmin && user.subscription.currentPeriodEnd && (
+              <div className="mt-4.5 flex items-center justify-between text-[13px]">
+                <span className="text-muted font-medium">
+                  {user.subscription.status === 'past_due'
+                    ? 'Retry by'
+                    : 'Next charge'}
+                </span>
+                <span className="font-semibold">
+                  {new Date(user.subscription.currentPeriodEnd).toLocaleDateString()}
+                </span>
+              </div>
+            )}
+
+            <div className="mt-4.5">
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between text-[13px]">
                   <span className="text-muted font-medium">Automated posts</span>

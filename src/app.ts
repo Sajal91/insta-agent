@@ -18,6 +18,7 @@ import { replyRouter } from './routes/reply.routes';
 import { mediaRouter } from './routes/media.routes';
 import { authRouter } from './routes/auth.routes';
 import { usersRouter } from './routes/users.routes';
+import { billingRouter } from './routes/billing.routes';
 
 /**
  * Express augmentation: the raw request body is captured during JSON parsing so
@@ -66,6 +67,7 @@ export function createApp(): express.Express {
 
   app.use('/auth', authRouter);
   app.use('/users', usersRouter);
+  app.use('/billing', billingRouter);
   app.use('/webhooks', webhookRouter);
   app.use('/reels', reelsRouter);
   app.use('/templates', templatesRouter);
@@ -97,6 +99,7 @@ export function createApp(): express.Express {
 const API_PREFIXES = [
   '/auth',
   '/users',
+  '/billing',
   '/webhooks',
   '/reels',
   '/templates',

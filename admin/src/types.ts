@@ -52,6 +52,38 @@ export interface Templates {
 export type UserRole = 'user' | 'admin';
 export type AutomationStatus = 'none' | 'pending' | 'approved' | 'rejected';
 
+export type SubscriptionStatus =
+  | 'none'
+  | 'created'
+  | 'active'
+  | 'past_due'
+  | 'paused'
+  | 'cancelled';
+
+export interface Subscription {
+  status: SubscriptionStatus;
+  razorpaySubscriptionId: string | null;
+  razorpayCustomerId: string | null;
+  planId: string | null;
+  setupFeePaid: boolean;
+  currentPeriodEnd: string | null;
+  lastPaymentId: string | null;
+  lastEventAt: string | null;
+  updatedAt: string | null;
+}
+
+/** Statuses that grant automation access (active + retry grace). */
+export function isSubscriptionActive(sub: Subscription | null | undefined): boolean {
+  return sub ? sub.status === 'active' || sub.status === 'past_due' : false;
+}
+
+export interface BillingInfo {
+  configured: boolean;
+  keyId: string | null;
+  pricing: { setupFeePaise: number; currency: string };
+  subscription: Subscription;
+}
+
 export interface CredentialSummary {
   configured: boolean;
   businessAccountId: string | null;
@@ -71,6 +103,7 @@ export interface User {
   requestedAt: string | null;
   approvedAt: string | null;
   credentials: CredentialSummary;
+  subscription: Subscription;
   createdAt: string;
   updatedAt: string;
 }

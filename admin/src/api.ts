@@ -1,5 +1,6 @@
 import type {
   AutomationStatus,
+  BillingInfo,
   CredentialsInput,
   LogEntry,
   MediaItem,
@@ -92,6 +93,27 @@ export const api = {
       method: 'POST',
       body: { note },
     }),
+
+  // ---- Billing (Razorpay subscriptions) ----
+  getBilling: () => request<BillingInfo>('/billing'),
+
+  createSubscription: () =>
+    request<{
+      subscriptionId: string;
+      keyId: string;
+      shortUrl?: string;
+      reused: boolean;
+      user?: User;
+    }>('/billing/subscription', { method: 'POST' }),
+
+  verifyPayment: (payload: {
+    razorpay_payment_id: string;
+    razorpay_subscription_id: string;
+    razorpay_signature: string;
+  }) => request<{ user: User }>('/billing/verify', {
+    method: 'POST',
+    body: payload,
+  }),
 
   // ---- Admin: user management ----
   listUsers: () => request<{ users: User[] }>('/users'),

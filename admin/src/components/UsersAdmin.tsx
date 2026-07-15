@@ -13,7 +13,12 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../api';
-import type { AutomationStatus, CredentialsInput, User } from '../types';
+import type {
+  AutomationStatus,
+  CredentialsInput,
+  SubscriptionStatus,
+  User,
+} from '../types';
 import { Banner, EmptyState, LoadingBlock, stagger, useToast } from './ui';
 import {
   avatar,
@@ -50,6 +55,29 @@ function StatusBadge({ status }: { status: AutomationStatus }) {
     rejected: badge.off,
   };
   return <span className={map[status]}>{status}</span>;
+}
+
+const SUB_BADGE_LABEL: Record<SubscriptionStatus, string> = {
+  none: 'no sub',
+  created: 'sub: pending',
+  active: 'sub: active',
+  past_due: 'sub: due',
+  paused: 'sub: paused',
+  cancelled: 'sub: cancelled',
+};
+
+function SubscriptionBadge({ status }: { status: SubscriptionStatus }) {
+  // A never-subscribed user adds noise; only surface once billing has started.
+  if (status === 'none') return null;
+  const map: Record<SubscriptionStatus, string> = {
+    none: badge.default,
+    created: badge.kw,
+    active: badge.on,
+    past_due: badge.kw,
+    paused: badge.off,
+    cancelled: badge.off,
+  };
+  return <span className={map[status]}>{SUB_BADGE_LABEL[status]}</span>;
 }
 
 function initials(name: string): string {
@@ -286,6 +314,7 @@ export function UsersAdmin() {
                       <KeyRound size={12} /> creds
                     </span>
                   )}
+                  <SubscriptionBadge status={u.subscription.status} />
                 </div>
               </div>
 
