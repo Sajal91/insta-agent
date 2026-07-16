@@ -1,7 +1,5 @@
 import type {
-  AutomationStatus,
   BillingInfo,
-  CredentialsInput,
   LogEntry,
   MediaItem,
   ReelConfig,
@@ -88,11 +86,12 @@ export const api = {
 
   me: () => request<{ user: User }>('/auth/me'),
 
-  requestAutomation: (note?: string) =>
-    request<{ user: User }>('/auth/request-automation', {
-      method: 'POST',
-      body: { note },
-    }),
+  // ---- Instagram self-serve connect (Business Login OAuth) ----
+  getInstagramLoginUrl: () =>
+    request<{ url: string }>('/auth/instagram/login'),
+
+  disconnectInstagram: () =>
+    request<{ user: User }>('/auth/instagram', { method: 'DELETE' }),
 
   // ---- Billing (Razorpay subscriptions) ----
   getBilling: () => request<BillingInfo>('/billing'),
@@ -118,27 +117,10 @@ export const api = {
   // ---- Admin: user management ----
   listUsers: () => request<{ users: User[] }>('/users'),
 
-  setUserStatus: (id: string, status: AutomationStatus) =>
-    request<{ user: User }>(`/users/${encodeURIComponent(id)}/status`, {
-      method: 'PATCH',
-      body: { status },
-    }),
-
   setUserRole: (id: string, role: UserRole) =>
     request<{ user: User }>(`/users/${encodeURIComponent(id)}/role`, {
       method: 'PATCH',
       body: { role },
-    }),
-
-  setUserCredentials: (id: string, credentials: CredentialsInput) =>
-    request<{ user: User }>(`/users/${encodeURIComponent(id)}/credentials`, {
-      method: 'PUT',
-      body: credentials,
-    }),
-
-  clearUserCredentials: (id: string) =>
-    request<{ user: User }>(`/users/${encodeURIComponent(id)}/credentials`, {
-      method: 'DELETE',
     }),
 
   listMedia: () => request<{ items: MediaItem[] }>('/media'),

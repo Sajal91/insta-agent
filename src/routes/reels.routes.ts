@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireApproved } from '../middleware/auth';
+import { requireActiveTenant } from '../middleware/auth';
 import { reelsRepo } from '../db/repositories/reels.repo';
 import { asyncHandler, formatZodError } from '../utils/http';
 
 export const reelsRouter = Router();
-reelsRouter.use(requireApproved);
+reelsRouter.use(requireActiveTenant);
 
 const linkSchema = z.object({
   // Instagram button titles are capped at 20 characters.

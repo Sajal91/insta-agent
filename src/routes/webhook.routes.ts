@@ -307,11 +307,9 @@ webhookRouter.post('/razorpay', (req, res) => {
     const periodEnd = subEntity.current_end ?? subEntity.charge_at ?? null;
     if (periodEnd) patch.currentPeriodEnd = new Date(periodEnd * 1000).toISOString();
 
-    // A successful charge confirms the setup fee (billed on the first invoice)
-    // and records the payment.
-    if (event === 'subscription.charged') {
-      patch.setupFeePaid = true;
-      if (paymentId) patch.lastPaymentId = paymentId;
+    // A successful charge records the payment id.
+    if (event === 'subscription.charged' && paymentId) {
+      patch.lastPaymentId = paymentId;
     }
 
     await usersRepo.updateSubscription(user._id.toString(), patch);

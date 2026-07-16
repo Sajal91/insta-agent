@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireApproved } from '../middleware/auth';
+import { requireActiveTenant } from '../middleware/auth';
 import { templatesRepo, type TemplateKey } from '../db/repositories/templates.repo';
 import { asyncHandler, formatZodError } from '../utils/http';
 
 export const templatesRouter = Router();
-templatesRouter.use(requireApproved);
+templatesRouter.use(requireActiveTenant);
 
 const putSchema = z
   .object({

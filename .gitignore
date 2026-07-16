@@ -6,6 +6,9 @@ dist/
 .env
 .env.local
 .env.*.local
+# Backend per-environment credential files (contain secrets).
+/.env.development
+/.env.production
 
 # OS / editor
 .DS_Store

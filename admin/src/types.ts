@@ -50,7 +50,6 @@ export interface Templates {
 }
 
 export type UserRole = 'user' | 'admin';
-export type AutomationStatus = 'none' | 'pending' | 'approved' | 'rejected';
 
 export type SubscriptionStatus =
   | 'none'
@@ -65,7 +64,6 @@ export interface Subscription {
   razorpaySubscriptionId: string | null;
   razorpayCustomerId: string | null;
   planId: string | null;
-  setupFeePaid: boolean;
   currentPeriodEnd: string | null;
   lastPaymentId: string | null;
   lastEventAt: string | null;
@@ -80,7 +78,7 @@ export function isSubscriptionActive(sub: Subscription | null | undefined): bool
 export interface BillingInfo {
   configured: boolean;
   keyId: string | null;
-  pricing: { setupFeePaise: number; currency: string };
+  pricing: { currency: string };
   subscription: Subscription;
 }
 
@@ -98,25 +96,10 @@ export interface User {
   name: string;
   picture: string | null;
   role: UserRole;
-  status: AutomationStatus;
-  requestNote: string | null;
-  requestedAt: string | null;
-  approvedAt: string | null;
   credentials: CredentialSummary;
   subscription: Subscription;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface CredentialsInput {
-  appId: string;
-  appSecret: string;
-  accessToken: string;
-  businessAccountId: string;
-  pageHandle: string;
-  verifyToken: string;
-  graphApiVersion?: string;
-  graphBaseUrl?: string;
 }
 
 export type ReelConfigInput = {

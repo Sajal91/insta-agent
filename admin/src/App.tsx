@@ -20,10 +20,11 @@ import { CreatePost } from './components/CreatePost';
 import { TemplatesEditor } from './components/TemplatesEditor';
 import { LogsView } from './components/LogsView';
 import { UsersAdmin } from './components/UsersAdmin';
-import { RequestAutomation } from './components/RequestAutomation';
+import { ConnectInstagram } from './components/ConnectInstagram';
 import { Billing } from './components/Billing';
 import { Dashboard } from './components/Dashboard';
 import {
+  Banner,
   BrandMark,
   BrandName,
   LoadingBlock,
@@ -55,7 +56,7 @@ const PAGE_META: Record<Tab, { title: string; sub: string }> = {
   create: { title: 'Create Post', sub: 'Publish new content to Instagram' },
   templates: { title: 'Templates', sub: 'Default DM & reply messages' },
   logs: { title: 'Activity Log', sub: 'Every automation event, tracked' },
-  users: { title: 'Users', sub: 'Access requests & credentials' },
+  users: { title: 'Users', sub: 'Manage users & roles' },
 };
 
 function initials(name: string): string {
@@ -102,6 +103,10 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [connectNotice, setConnectNotice] = useState<{
+    kind: 'ok' | 'error';
+    msg: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!getToken()) {
@@ -128,6 +133,41 @@ export function App() {
       .catch(() => setHealth('down'));
   }, [authState]);
 
+  // Handle the Instagram OAuth redirect back to the app (?connected=1 or
+  // ?connect_error=...). Refresh the user on success and clean the URL.
+  useEffect(() => {
+    if (authState !== 'in') return;
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('connected');
+    const err = params.get('connect_error');
+    if (!connected && !err) return;
+
+    params.delete('connected');
+    params.delete('connect_error');
+    const qs = params.toString();
+    window.history.replaceState(
+      {},
+      '',
+      window.location.pathname + (qs ? `?${qs}` : ''),
+    );
+
+    if (connected) {
+      setConnectNotice({
+        kind: 'ok',
+        msg: 'Instagram connected successfully.',
+      });
+      api
+        .me()
+        .then(({ user }) => setUser(user))
+        .catch(() => {});
+    } else if (err) {
+      setConnectNotice({
+        kind: 'error',
+        msg: `Instagram connection failed (${err}). Please try again.`,
+      });
+    }
+  }, [authState]);
+
   function logout() {
     clearToken();
     setUser(null);
@@ -150,12 +190,12 @@ export function App() {
   }
 
   const isAdmin = user.role === 'admin';
-  const isApproved = user.status === 'approved';
+  const isConnected = user.credentials.configured;
   const hasActiveSub = isSubscriptionActive(user.subscription);
-  const canAutomate = isAdmin || (isApproved && hasActiveSub);
-  // Approved but not yet paying -> show the billing paywall instead of the
-  // request flow (which handles none / pending / rejected).
-  const needsPayment = !isAdmin && isApproved && !hasActiveSub;
+  const canAutomate = isAdmin || (isConnected && hasActiveSub);
+  // Connected but not yet paying -> show the billing paywall. Not connected yet
+  // -> show the self-serve Instagram connect card.
+  const needsPayment = !isAdmin && isConnected && !hasActiveSub;
 
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
@@ -312,12 +352,17 @@ export function App() {
           </header>
 
           <main className="w-full px-7 pt-6 pb-18 max-[620px]:px-4 max-[620px]:pt-4 max-[620px]:pb-14">
+            {connectNotice && (
+              <div className="mb-4">
+                <Banner kind={connectNotice.kind}>{connectNotice.msg}</Banner>
+              </div>
+            )}
             {!canAutomate && !isAdmin && activeTab === 'dashboard' ? (
               <motion.div {...fadeUp}>
                 {needsPayment ? (
                   <Billing user={user} onUpdated={setUser} />
                 ) : (
-                  <RequestAutomation user={user} onUpdated={setUser} />
+                  <ConnectInstagram />
                 )}
               </motion.div>
             ) : (

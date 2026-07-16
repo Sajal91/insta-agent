@@ -69,9 +69,8 @@ export async function createCustomer(
 }
 
 /**
- * Create a monthly subscription for the user. The setup fee (when configured) is
- * attached as a one-time addon on the first invoice, so the first charge equals
- * setup fee + first month, and subsequent charges are the plan amount only.
+ * Create a monthly subscription for the user. The first charge and every
+ * subsequent charge equal the plan amount only (no setup fee).
  */
 export async function createSubscription(
   user: WithId<UserDoc>,
@@ -82,25 +81,11 @@ export async function createSubscription(
     throw new Error('Razorpay is not configured');
   }
 
-  const addons =
-    config.RAZORPAY_SETUP_FEE_PAISE > 0
-      ? [
-          {
-            item: {
-              name: 'Account setup fee',
-              amount: config.RAZORPAY_SETUP_FEE_PAISE,
-              currency: config.RAZORPAY_CURRENCY,
-            },
-          },
-        ]
-      : undefined;
-
   const subscription = await rzp.subscriptions.create({
     plan_id: config.RAZORPAY_PLAN_ID,
     total_count: DEFAULT_TOTAL_COUNT,
     customer_notify: 1,
     ...(customerId ? { customer_id: customerId } : {}),
-    ...(addons ? { addons } : {}),
     notes: { userId: user._id.toString() },
   } as Parameters<typeof rzp.subscriptions.create>[0]);
 
@@ -196,7 +181,6 @@ export function mapRazorpayStatus(
 /** Public pricing snapshot shown to users on the paywall. */
 export function billingPricing() {
   return {
-    setupFeePaise: config.RAZORPAY_SETUP_FEE_PAISE,
     currency: config.RAZORPAY_CURRENCY,
   };
 }

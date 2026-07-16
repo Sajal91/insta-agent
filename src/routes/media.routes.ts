@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireApproved } from '../middleware/auth';
+import { requireActiveTenant } from '../middleware/auth';
 import { asyncHandler, formatZodError } from '../utils/http';
 import { createInstagramClient } from '../services/instagram.service';
 import { resolveCredentials } from '../services/credentials.service';
 import { reelsRepo } from '../db/repositories/reels.repo';
 
 export const mediaRouter = Router();
-mediaRouter.use(requireApproved);
+mediaRouter.use(requireActiveTenant);
 
 /**
  * List the account's posts/reels, each annotated with its auto-reply config (if

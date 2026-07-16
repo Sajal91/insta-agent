@@ -1,4 +1,6 @@
-import 'dotenv/config';
+// Side-effect import: loads the correct .env layer for the active environment
+// (development/production) before we read process.env below.
+import { environment } from './load-env';
 import { z } from 'zod';
 
 /**
@@ -12,18 +14,31 @@ const envSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
 
-  // ---- Instagram credentials for the ADMIN account only ----
-  // In the multi-tenant SaaS model these env vars are NOT global anymore: they
-  // belong exclusively to the admin's own Instagram account (the user whose
-  // email matches ADMIN_EMAIL). Every other user's credentials are entered by
-  // the admin through the panel and stored (encrypted) in MongoDB per-user.
-  // They are therefore optional — a fresh SaaS deploy can run without them.
+  // ---- Instagram app (platform-wide, "Instagram API with Instagram Login") ----
+  // IG_APP_ID / IG_APP_SECRET are the credentials of the single Meta app used to
+  // run the self-serve "Business Login" OAuth for EVERY user. Each user connects
+  // their own Instagram account through that flow; the resulting per-user access
+  // token + business account id are stored (encrypted) in MongoDB.
+  //
+  // IG_ACCESS_TOKEN / IG_BUSINESS_ACCOUNT_ID / IG_PAGE_HANDLE remain optional and
+  // are only used as a fallback for the admin account's own automation.
   IG_APP_ID: z.string().optional().default(''),
   IG_APP_SECRET: z.string().optional().default(''),
   IG_ACCESS_TOKEN: z.string().optional().default(''),
   IG_BUSINESS_ACCOUNT_ID: z.string().optional().default(''),
   IG_PAGE_HANDLE: z.string().optional().default(''),
   IG_GRAPH_API_VERSION: z.string().default('v21.0'),
+
+  // Where Meta redirects back after the user authorizes Business Login. Must be
+  // publicly reachable and registered as a valid OAuth redirect URI in the app,
+  // e.g. https://api.example.com/auth/instagram/callback
+  IG_OAUTH_REDIRECT_URI: z.string().optional().default(''),
+  // Scopes requested during Business Login (comma-separated).
+  IG_SCOPES: z
+    .string()
+    .default(
+      'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish',
+    ),
 
   // API host. Use graph.instagram.com for "Instagram API with Instagram Login"
   // (tokens that start with IGAA/IGQ), or graph.facebook.com for the Facebook
@@ -70,20 +85,24 @@ const envSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
   // The monthly Plan id (e.g. plan_XXXXXXXX) created in the dashboard.
   RAZORPAY_PLAN_ID: z.string().optional().default(''),
-  // One-time setup fee, in the smallest currency unit (paise for INR).
-  RAZORPAY_SETUP_FEE_PAISE: z.coerce.number().int().nonnegative().default(0),
-  // ISO currency code used for the setup-fee addon (must match the plan).
+  // ISO currency code (informational; must match the plan).
   RAZORPAY_CURRENCY: z.string().default('INR'),
 
   // Allowed origin(s) for the admin panel (CORS). Comma-separated, or "*".
   CORS_ORIGIN: z.string().default('*'),
+
+  // Public base URL of the frontend (admin panel). Used to redirect the browser
+  // back after the Instagram OAuth callback, e.g. https://app.example.com
+  APP_PUBLIC_URL: z.string().optional().default(''),
 
   // Path to the built admin panel (Vite output). When this directory exists the
   // server also serves the admin SPA (single-origin deploy). Defaults to
   // ../admin/dist relative to the compiled server.
   ADMIN_DIST_PATH: z.string().optional(),
 
-  MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+  // Connection string. Optional here so it can default per-environment in
+  // loadConfig(): local mongod in development, required (Atlas) in production.
+  MONGODB_URI: z.string().optional().default(''),
   MONGODB_DB: z.string().min(1).default('insta_agent'),
   // How long the driver waits to find a reachable server before failing. Atlas
   // over the public internet needs more headroom than a local mongod.
@@ -116,8 +135,23 @@ export function loadConfig(): AppConfig {
   }
 
   cached = parsed.data;
+
+  // Resolve the MongoDB connection per environment: fall back to a local mongod
+  // in development, but require an explicit (Atlas) URI in production.
+  if (!cached.MONGODB_URI) {
+    if (environment === 'production') {
+      throw new Error(
+        'Invalid environment configuration:\n  - MONGODB_URI: required in production (set your MongoDB Atlas connection string in .env.production)',
+      );
+    }
+    cached.MONGODB_URI = DEFAULT_LOCAL_MONGODB_URI;
+  }
+
   return cached;
 }
+
+/** Local mongod used as the development default when MONGODB_URI is unset. */
+export const DEFAULT_LOCAL_MONGODB_URI = 'mongodb://127.0.0.1:27017';
 
 export const config = loadConfig();
 
@@ -132,10 +166,12 @@ export function isRazorpayConfigured(cfg: AppConfig = config): boolean {
   );
 }
 
-/** True when running with NODE_ENV=production. */
-export const isProduction = config.NODE_ENV === 'production';
-/** True when running the local dev environment. */
-export const isDevelopment = config.NODE_ENV === 'development';
+/** The active environment resolved by the env loader ('development'|'production'). */
+export { environment };
+/** True when running the production environment. */
+export const isProduction = environment === 'production';
+/** True when running the local development environment. */
+export const isDevelopment = environment === 'development';
 
 /**
  * Extra safety checks that only apply to production deploys (e.g. AWS). Returns

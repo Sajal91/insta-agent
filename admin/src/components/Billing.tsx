@@ -35,23 +35,10 @@ declare global {
   }
 }
 
-function formatAmount(paise: number, currency: string): string {
-  const amount = paise / 100;
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: amount % 1 === 0 ? 0 : 2,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
-}
-
 /**
- * The paywall shown to an approved user whose subscription isn't active yet.
- * Launches Razorpay Checkout to authorize the mandate + pay the first invoice
- * (setup fee + first month); access unlocks once the subscription is active.
+ * The paywall shown to a connected user whose subscription isn't active yet.
+ * Launches Razorpay Checkout to authorize the mandate + pay the first month;
+ * access unlocks once the subscription is active.
  */
 export function Billing({
   user,
@@ -86,8 +73,6 @@ export function Billing({
 
   const sub = info?.subscription ?? user.subscription;
   const isPaused = sub.status === 'paused' || sub.status === 'cancelled';
-  const setupFee = info?.pricing.setupFeePaise ?? 0;
-  const currency = info?.pricing.currency ?? 'INR';
 
   async function startPayment() {
     setBusy(true);
@@ -182,7 +167,7 @@ export function Billing({
       <div className={cx(hint, 'mt-2')}>
         {isPaused
           ? 'Your subscription is paused because a payment could not be collected. Pay now to resume your Instagram automation.'
-          : 'Your account has been set up by the admin. Complete payment to start your monthly subscription and unlock the automation.'}
+          : 'Your Instagram account is connected. Complete payment to start your monthly subscription and unlock the automation.'}
       </div>
 
       {error && (
@@ -196,17 +181,11 @@ export function Billing({
           <span className="text-muted font-medium">Monthly subscription</span>
           <span className="font-semibold">billed monthly</span>
         </div>
-        {setupFee > 0 && !sub.setupFeePaid && (
-          <div className="flex items-center justify-between text-[13.5px] mt-2.5">
-            <span className="text-muted font-medium">One-time setup fee</span>
-            <span className="font-semibold">{formatAmount(setupFee, currency)}</span>
-          </div>
-        )}
         <div className="mt-3 pt-3 border-t border-border flex items-start gap-2 text-[12.5px] text-muted">
           <ShieldCheck size={15} className="shrink-0 mt-px text-green" />
           <span>
-            Secure auto-debit via Razorpay. You authorize a monthly mandate; the
-            first charge includes the setup fee where applicable.
+            Secure auto-debit via Razorpay. You authorize a monthly mandate and
+            are charged the plan amount each month.
           </span>
         </div>
       </div>

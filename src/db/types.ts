@@ -35,22 +35,12 @@ export interface MessageLink {
 
 // ---- Multi-tenant: users & credentials ----
 
-/** Platform role. Admins additionally manage users + credentials. */
+/** Platform role. Admins manage users + roles. */
 export type UserRole = 'user' | 'admin';
 
 /**
- * Automation-request lifecycle for a signed-up user:
- *   none      – signed up, has not requested the automation yet
- *   pending   – requested, awaiting admin review
- *   approved  – admin approved; user can operate their automation
- *   rejected  – admin declined the request
- */
-export type AutomationStatus = 'none' | 'pending' | 'approved' | 'rejected';
-
-/**
- * Billing/subscription lifecycle, tracked in parallel to the admin-review
- * `status` above. Automation access requires BOTH status === 'approved' and a
- * subscription in the "active set" (active or past_due).
+ * Billing/subscription lifecycle. Automation access requires a connected
+ * Instagram account AND a subscription in the "active set" (active or past_due).
  *
  *   none      – never subscribed
  *   created   – a Razorpay subscription was created, awaiting mandate + first charge
@@ -73,8 +63,6 @@ export interface Subscription {
   razorpaySubscriptionId: string | null;
   razorpayCustomerId: string | null;
   planId: string | null;
-  /** Whether the one-time setup fee (first-invoice addon) has been charged. */
-  setupFeePaid: boolean;
   /** End of the current paid cycle / next auto-charge date (ISO), if known. */
   currentPeriodEnd: string | null;
   lastPaymentId: string | null;
@@ -90,7 +78,6 @@ export function emptySubscription(): Subscription {
     razorpaySubscriptionId: null,
     razorpayCustomerId: null,
     planId: null,
-    setupFeePaid: false,
     currentPeriodEnd: null,
     lastPaymentId: null,
     lastEventAt: null,
@@ -144,10 +131,6 @@ export interface UserDoc {
   name: string;
   picture: string | null;
   role: UserRole;
-  status: AutomationStatus;
-  requestNote: string | null;
-  requestedAt: string | null;
-  approvedAt: string | null;
   igCredentials: StoredIgCredentials | null;
   subscription: Subscription;
   createdAt: string;
@@ -231,10 +214,6 @@ export interface User {
   name: string;
   picture: string | null;
   role: UserRole;
-  status: AutomationStatus;
-  requestNote: string | null;
-  requestedAt: string | null;
-  approvedAt: string | null;
   credentials: CredentialSummary;
   subscription: Subscription;
   createdAt: string;

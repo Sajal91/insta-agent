@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireApproved } from '../middleware/auth';
+import { requireActiveTenant } from '../middleware/auth';
 import { asyncHandler, formatZodError } from '../utils/http';
 import { createInstagramClient } from '../services/instagram.service';
 import { resolveCredentials } from '../services/credentials.service';
@@ -11,7 +11,7 @@ import { flowStateRepo } from '../db/repositories/flow-state.repo';
 import { logsRepo } from '../db/repositories/logs.repo';
 
 export const replyRouter = Router();
-replyRouter.use(requireApproved);
+replyRouter.use(requireActiveTenant);
 
 const manualSchema = z.object({
   commentId: z.string().min(1),

@@ -92,11 +92,11 @@ export async function requireAdmin(
 
 /**
  * Require an authenticated user who is allowed to operate the automation:
- * either an admin, or a regular user whose request has been approved AND who has
- * an active subscription. The subscription gate only applies when Razorpay is
- * configured, so deployments without billing keep the approval-only behaviour.
+ * either an admin, or a regular user who has connected their Instagram account
+ * AND has an active subscription. The subscription gate only applies when
+ * Razorpay is configured, so deployments without billing stay connect-only.
  */
-export async function requireApproved(
+export async function requireActiveTenant(
   req: Request,
   res: Response,
   next: NextFunction,
@@ -107,10 +107,11 @@ export async function requireApproved(
     return;
   }
   if (user.role !== 'admin') {
-    if (user.status !== 'approved') {
-      res
-        .status(403)
-        .json({ error: 'Your automation access has not been approved yet' });
+    if (!user.igCredentials) {
+      res.status(403).json({
+        error: 'Connect your Instagram account to use the automation.',
+        code: 'instagram_not_connected',
+      });
       return;
     }
     if (isRazorpayConfigured() && !isSubscriptionActive(user.subscription)) {

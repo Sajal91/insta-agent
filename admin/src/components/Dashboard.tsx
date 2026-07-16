@@ -152,8 +152,19 @@ export function Dashboard({
   const [media, setMedia] = useState<MediaItem[] | null>(null);
   const [logs, setLogs] = useState<LogEntry[] | null>(null);
   const [userCount, setUserCount] = useState<number | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
   const isAdmin = user.role === 'admin';
+
+  async function connectInstagram() {
+    setConnecting(true);
+    try {
+      const { url } = await api.getInstagramLoginUrl();
+      window.location.href = url;
+    } catch {
+      setConnecting(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -535,10 +546,19 @@ export function Dashboard({
               <span className={statusDot(cred.configured ? 'ok' : 'down')} />
             </div>
             {!cred.configured && (
-              <div className={cx(banner.warn, 'mt-4 mb-0')}>
-                An admin needs to configure your Instagram credentials before
-                automations can run.
-              </div>
+              <>
+                <div className={cx(banner.warn, 'mt-4 mb-0')}>
+                  Connect your Instagram Business account to start automating
+                  replies.
+                </div>
+                <button
+                  className={cx(btn.premium, 'mt-4')}
+                  onClick={connectInstagram}
+                  disabled={connecting}
+                >
+                  {connecting ? 'Redirecting…' : 'Connect Instagram'}
+                </button>
+              </>
             )}
           </motion.div>
 

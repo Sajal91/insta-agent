@@ -1,5 +1,5 @@
 import { MongoClient, type Db, type Collection } from 'mongodb';
-import { config } from '../config/env';
+import { config, environment } from '../config/env';
 import { logger } from '../utils/logger';
 import type {
   FlowStateDoc,
@@ -42,6 +42,9 @@ export async function connectDb(): Promise<Db> {
   if (db) return db;
 
   const isSrv = config.MONGODB_URI.startsWith('mongodb+srv://');
+  // development -> local mongod, production -> Atlas (mongodb+srv). Resolved from
+  // the per-environment MONGODB_URI (config/env.ts), so the connection is dynamic.
+  const target = isSrv ? 'atlas' : 'local';
 
   client = new MongoClient(config.MONGODB_URI, {
     appName: 'insta-agent',
@@ -68,7 +71,7 @@ export async function connectDb(): Promise<Db> {
   await seedDefaultTemplates(db);
 
   logger.info(
-    { db: config.MONGODB_DB, srv: isSrv },
+    { db: config.MONGODB_DB, environment, target, srv: isSrv },
     'MongoDB connected',
   );
   return db;

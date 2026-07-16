@@ -55,16 +55,11 @@ billingRouter.post(
       res.status(400).json({ error: 'Admins do not need a subscription' });
       return;
     }
-    if (user.status !== 'approved') {
-      res
-        .status(403)
-        .json({ error: 'Your access must be approved by an admin first' });
-      return;
-    }
     if (!user.igCredentials) {
       res.status(409).json({
         error:
-          'An admin still needs to configure your Instagram credentials before you can subscribe',
+          'Connect your Instagram account before subscribing',
+        code: 'instagram_not_connected',
       });
       return;
     }
@@ -159,10 +154,6 @@ billingRouter.post(
     const now = new Date().toISOString();
     const updated = await usersRepo.updateSubscription(user._id.toString(), {
       status: 'active',
-      setupFeePaid:
-        config.RAZORPAY_SETUP_FEE_PAISE > 0
-          ? true
-          : (user.subscription?.setupFeePaid ?? false),
       lastPaymentId: paymentId,
       lastEventAt: now,
     });

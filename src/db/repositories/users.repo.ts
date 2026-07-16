@@ -4,7 +4,6 @@ import { config } from '../../config/env';
 import { decryptSecret, encryptSecret } from '../../utils/crypto';
 import {
   emptySubscription,
-  type AutomationStatus,
   type CredentialSummary,
   type IgCredentials,
   type StoredIgCredentials,
@@ -14,7 +13,7 @@ import {
   type UserRole,
 } from '../types';
 
-/** Input used to persist a user's Instagram credentials (admin-provided). */
+/** Input used to persist a user's Instagram credentials (from the OAuth connect flow). */
 export interface CredentialsInput {
   appId: string;
   appSecret: string;
@@ -100,10 +99,6 @@ export function mapUser(doc: WithId<UserDoc>): User {
     name: doc.name,
     picture: doc.picture,
     role: doc.role,
-    status: doc.status,
-    requestNote: doc.requestNote,
-    requestedAt: doc.requestedAt,
-    approvedAt: doc.approvedAt,
     credentials: credentialSummary(doc),
     subscription: doc.subscription ?? emptySubscription(),
     createdAt: doc.createdAt,
@@ -198,10 +193,6 @@ export const usersRepo = {
       name: profile.name,
       picture: profile.picture,
       role,
-      status: 'none',
-      requestNote: null,
-      requestedAt: null,
-      approvedAt: null,
       igCredentials: null,
       subscription: emptySubscription(),
       createdAt: now,
@@ -220,44 +211,6 @@ export const usersRepo = {
     return docs.map(mapUser);
   },
 
-  /** Record an automation request from a user (moves status -> pending). */
-  async requestAutomation(id: string, note: string | null): Promise<User | null> {
-    if (!ObjectId.isValid(id)) return null;
-    const now = new Date().toISOString();
-    const coll = collections.users();
-    await coll.updateOne(
-      { _id: new ObjectId(id) },
-      {
-        $set: {
-          status: 'pending',
-          requestNote: note,
-          requestedAt: now,
-          updatedAt: now,
-        },
-      },
-    );
-    const doc = await coll.findOne({ _id: new ObjectId(id) });
-    return doc ? mapUser(doc) : null;
-  },
-
-  async setStatus(id: string, status: AutomationStatus): Promise<User | null> {
-    if (!ObjectId.isValid(id)) return null;
-    const now = new Date().toISOString();
-    const coll = collections.users();
-    await coll.updateOne(
-      { _id: new ObjectId(id) },
-      {
-        $set: {
-          status,
-          approvedAt: status === 'approved' ? now : null,
-          updatedAt: now,
-        },
-      },
-    );
-    const doc = await coll.findOne({ _id: new ObjectId(id) });
-    return doc ? mapUser(doc) : null;
-  },
-
   async setRole(id: string, role: UserRole): Promise<User | null> {
     if (!ObjectId.isValid(id)) return null;
     const now = new Date().toISOString();
@@ -270,7 +223,8 @@ export const usersRepo = {
     return doc ? mapUser(doc) : null;
   },
 
-  async setCredentials(
+  /** Store the Instagram credentials obtained from the self-serve OAuth flow. */
+  async connectInstagram(
     id: string,
     input: CredentialsInput,
   ): Promise<User | null> {
